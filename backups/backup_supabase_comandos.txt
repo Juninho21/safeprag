@@ -1,0 +1,95 @@
+# Comandos e instruções para backup do Supabase (tabelas e storage)
+
+1. Instale a dependência do Supabase:
+   npm install @supabase/supabase-js
+
+2. Crie o arquivo de script em JavaScript (src/scripts/backup.js) com o seguinte conteúdo:
+
+---
+import { createClient } from '@supabase/supabase-js';
+import { fileURLToPath } from 'url';
+import { dirname, join } from 'path';
+import { writeFileSync, mkdirSync, existsSync } from 'fs';
+
+const supabaseUrl = 'https://badyvhzrjbemyqzeqlaw.supabase.co';
+const supabaseAnonKey = process.env.VITE_SUPABASE_ANON_KEY || '';
+
+if (!supabaseAnonKey) {
+  throw new Error('Supabase Anon Key é necessária nas variáveis de ambiente');
+}
+
+const supabase = createClient(supabaseUrl, supabaseAnonKey);
+
+const __filename = fileURLToPath(import.meta.url);
+const __dirname = dirname(__filename);
+
+async function backupDatabase() {
+  try {
+    const backupDir = join(process.cwd(), 'backups');
+    if (!existsSync(backupDir)) {
+      mkdirSync(backupDir);
+    }
+    const date = new Date().toISOString().split('T')[0];
+    const backupFile = join(backupDir, `backup_${date}.json`);
+    const tables = [
+      'client_signatures',
+      'clients',
+      'company',
+      'config',
+      'devices',
+      'products',
+      'profiles',
+      'schedules',
+      'service_order_pdfs',
+      'service_orders',
+      'signatures',
+      'system_settings',
+      'user_data',
+      'users'
+    ];
+    const backup = {};
+    for (const tableName of tables) {
+      const { data, error } = await supabase
+        .from(tableName)
+        .select('*');
+      if (error) {
+        console.error(`Erro ao exportar tabela ${tableName}:`, error);
+        continue;
+      }
+      backup[tableName] = data;
+    }
+    writeFileSync(backupFile, JSON.stringify(backup, null, 2));
+    console.log(`Backup salvo em: ${backupFile}`);
+    const { data: buckets, error: bucketsError } = await supabase
+      .storage
+      .listBuckets();
+    if (bucketsError) throw bucketsError;
+    const storageBackup = {};
+    for (const bucket of buckets) {
+      const { data: files, error: filesError } = await supabase
+        .storage
+        .from(bucket.name)
+        .list();
+      if (filesError) {
+        console.error(`Erro ao listar arquivos do bucket ${bucket.name}:`, filesError);
+        continue;
+      }
+      storageBackup[bucket.name] = files;
+    }
+    const storageBackupFile = join(backupDir, `storage_backup_${date}.json`);
+    writeFileSync(storageBackupFile, JSON.stringify(storageBackup, null, 2));
+    console.log(`Backup do storage salvo em: ${storageBackupFile}`);
+  } catch (error) {
+    console.error('Erro ao fazer backup:', error);
+  }
+}
+backupDatabase();
+---
+
+3. Para rodar o backup, use o comando abaixo (substitua SUA_CHAVE_AQUI pela sua anon key do Supabase):
+
+$env:VITE_SUPABASE_ANON_KEY="SUA_CHAVE_AQUI"; node src/scripts/backup.js
+
+4. Os arquivos de backup serão salvos na pasta backups do projeto.
+
+5. Repita o processo sempre que quiser um novo backup. 

@@ -1,0 +1,27 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>Debug Produtos</title>
+</head>
+<body>
+    <h1>Debug - Produtos no localStorage</h1>
+    <div id="result"></div>
+    
+    <script>
+        const products = localStorage.getItem('safeprag_products');
+        const resultDiv = document.getElementById('result');
+        
+        if (products) {
+            const parsedProducts = JSON.parse(products);
+            resultDiv.innerHTML = `
+                <h2>Produtos encontrados: ${parsedProducts.length}</h2>
+                <pre>${JSON.stringify(parsedProducts, null, 2)}</pre>
+            `;
+        } else {
+            resultDiv.innerHTML = '<h2>Nenhum produto encontrado no localStorage</h2>';
+        }
+        
+        console.log('Produtos no localStorage:', products);
+    </script>
+</body>
+</html>
