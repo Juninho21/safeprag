@@ -50,8 +50,8 @@ export const ImageUpload: React.FC<ImageUploadProps> = ({
             width = Math.floor(width * ratio);
             height = Math.floor(height * ratio);
           } else {
-            // Se a imagem já estiver dentro dos limites e for menor que 2MB, retornar o arquivo original
-            if (file.size <= 2 * 1024 * 1024) {
+            // Se a imagem já estiver dentro dos limites e for menor que 5MB, retornar o arquivo original
+            if (file.size <= 5 * 1024 * 1024) {
               setIsResizing(false);
               resolve(file);
               return;
@@ -118,8 +118,8 @@ export const ImageUpload: React.FC<ImageUploadProps> = ({
       try {
         let finalFile = file;
         
-        // Se o arquivo for maior que 2MB, redimensionar automaticamente
-        if (file.size > 2 * 1024 * 1024) {
+        // Se o arquivo for maior que 5MB, redimensionar automaticamente
+        if (file.size > 5 * 1024 * 1024) {
           console.log(`🖼️ Arquivo muito grande (${(file.size / 1024 / 1024).toFixed(2)}MB), redimensionando...`);
           finalFile = await resizeImage(file);
         }
@@ -181,7 +181,7 @@ export const ImageUpload: React.FC<ImageUploadProps> = ({
           className="flex flex-col items-center justify-center py-4"
         >
           <span className="font-semibold text-gray-500 border border-dashed border-gray-300 rounded px-4 py-2">Logo da empresa</span>
-          <p className="text-xs text-gray-400 mt-1">PNG, JPG até 2MB (redimensionamento automático)</p>
+          <p className="text-xs text-gray-400 mt-1">PNG, JPG até 5MB (redimensionamento automático)</p>
         </div>
       )}
     </div>

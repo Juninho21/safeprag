@@ -1,5 +1,6 @@
-// Removido: import do supabase
 import { DevicePestCount } from '../types/pest.types';
+import { STORAGE_KEYS } from './storageKeys';
+import { storageService } from './storageService';
 
 export interface ServiceListItem {
   id: string;
@@ -29,88 +30,52 @@ export interface SavedDevice {
 }
 
 class ActivityService {
-  // Salvar contagens de pragas no Supabase
+  // Salvar contagens de pragas no localStorage
   async savePestCounts(serviceOrderId: string, counts: DevicePestCount[]): Promise<void> {
     try {
-      // Primeiro, deletar contagens existentes para esta ordem
-      await supabase
-        .from('device_pest_counts')
-        .delete()
-        .eq('service_order_id', serviceOrderId);
-
-      // Inserir novas contagens
-      const pestCountsData = [];
-      for (const deviceCount of counts) {
-        for (const pest of deviceCount.pests) {
-          pestCountsData.push({
-            service_order_id: serviceOrderId,
-            device_type: deviceCount.deviceType,
-            device_number: deviceCount.deviceNumber,
-            pest_name: pest.name,
-            pest_count: pest.count
-          });
+      // Chave para armazenar as contagens de pragas específicas desta ordem de serviço
+      const key = `pestCounts_${serviceOrderId}`;
+      localStorage.setItem(key, JSON.stringify(counts));
+      
+      // Atualizar também a ordem de serviço com as contagens
+      const serviceOrders = storageService.getServiceOrders();
+      const updatedOrders = serviceOrders.map(order => {
+        if (order.id === serviceOrderId) {
+          return { ...order, pest_counts: counts };
         }
-      }
-
-      if (pestCountsData.length > 0) {
-        const { error } = await supabase
-          .from('device_pest_counts')
-          .insert(pestCountsData);
-
-        if (error) {
-          throw error;
-        }
-      }
-
-      // Também atualizar o campo pest_counts na tabela service_orders para compatibilidade
-      await supabase
-        .from('service_orders')
-        .update({ pest_counts: counts })
-        .eq('id', serviceOrderId);
-
-      console.log('Contagens de pragas salvas no Supabase:', counts);
+        return order;
+      });
+      storageService.saveServiceOrders(updatedOrders);
+      
+      console.log('Contagens de pragas salvas no localStorage:', counts);
     } catch (error) {
-      console.error('Erro ao salvar contagens de pragas no Supabase:', error);
+      console.error('Erro ao salvar contagens de pragas no localStorage:', error);
       throw error;
     }
   }
 
-  // Carregar contagens de pragas do Supabase
+  // Carregar contagens de pragas do localStorage
   async loadPestCounts(serviceOrderId: string): Promise<DevicePestCount[]> {
     try {
-      const { data, error } = await supabase
-        .from('device_pest_counts')
-        .select('*')
-        .eq('service_order_id', serviceOrderId);
-
-      if (error) {
-        throw error;
-      }
-
-      // Agrupar por dispositivo
-      const deviceMap = new Map<string, DevicePestCount>();
+      // Tentar carregar do armazenamento específico da ordem
+      const key = `pestCounts_${serviceOrderId}`;
+      const data = localStorage.getItem(key);
       
-      data?.forEach(item => {
-        const deviceKey = `${item.device_type}-${item.device_number}`;
-        
-        if (!deviceMap.has(deviceKey)) {
-          deviceMap.set(deviceKey, {
-            deviceType: item.device_type,
-            deviceNumber: item.device_number,
-            pests: []
-          });
-        }
-        
-        const device = deviceMap.get(deviceKey)!;
-        device.pests.push({
-          name: item.pest_name,
-          count: item.pest_count
-        });
-      });
-
-      return Array.from(deviceMap.values());
+      if (data) {
+        return JSON.parse(data);
+      }
+      
+      // Se não encontrar, tentar buscar da ordem de serviço
+      const serviceOrders = storageService.getServiceOrders();
+      const order = serviceOrders.find(o => o.id === serviceOrderId);
+      
+      if (order && order.pest_counts) {
+        return order.pest_counts;
+      }
+      
+      return [];
     } catch (error) {
-      console.error('Erro ao carregar contagens de pragas do Supabase:', error);
+      console.error('Erro ao carregar contagens de pragas do localStorage:', error);
       return [];
     }
   }
@@ -145,67 +110,52 @@ class ActivityService {
     }
   }
 
-  // Salvar dispositivos no Supabase
+  // Salvar dispositivos no localStorage
   async saveDevices(serviceOrderId: string, devices: SavedDevice[]): Promise<void> {
     try {
-      // Primeiro, deletar dispositivos existentes para esta ordem
-      await supabase
-        .from('service_order_devices')
-        .delete()
-        .eq('service_order_id', serviceOrderId);
-
-      // Inserir novos dispositivos
-      const devicesData = devices.map(device => ({
-        service_order_id: serviceOrderId,
-        device_id: device.id,
-        device_type: device.type,
-        device_status: device.status,
-        quantity: device.quantity
-      }));
-
-      if (devicesData.length > 0) {
-        const { error } = await supabase
-          .from('service_order_devices')
-          .insert(devicesData);
-
-        if (error) {
-          throw error;
+      // Salvar dispositivos específicos desta ordem
+      const key = `devices_${serviceOrderId}`;
+      localStorage.setItem(key, JSON.stringify(devices));
+      
+      // Atualizar também a ordem de serviço com os dispositivos
+      const serviceOrders = storageService.getServiceOrders();
+      const updatedOrders = serviceOrders.map(order => {
+        if (order.id === serviceOrderId) {
+          return { ...order, devices: devices };
         }
-      }
-
-      // Também atualizar o campo devices na tabela service_orders para compatibilidade
-      await supabase
-        .from('service_orders')
-        .update({ devices: devices })
-        .eq('id', serviceOrderId);
-
-      console.log('Dispositivos salvos no Supabase:', devices);
+        return order;
+      });
+      storageService.saveServiceOrders(updatedOrders);
+      
+      console.log('Dispositivos salvos no localStorage:', devices);
     } catch (error) {
-      console.error('Erro ao salvar dispositivos no Supabase:', error);
+      console.error('Erro ao salvar dispositivos no localStorage:', error);
       throw error;
     }
   }
 
-  // Carregar dispositivos do Supabase
+  // Carregar dispositivos do localStorage
   async loadDevices(serviceOrderId: string): Promise<SavedDevice[]> {
     try {
-      const { data, error } = await supabase
-        .from('service_order_devices')
-        .select('*')
-        .eq('service_order_id', serviceOrderId);
-
-      if (error) {
-        throw error;
+      // Tentar carregar do armazenamento específico da ordem
+      const key = `devices_${serviceOrderId}`;
+      const data = localStorage.getItem(key);
+      
+      if (data) {
+        return JSON.parse(data);
       }
-
-      return data?.map(item => ({
-        id: item.device_id,
-        type: item.device_type,
-        status: item.device_status,
-        quantity: item.quantity
-      })) || [];
+      
+      // Se não encontrar, tentar buscar da ordem de serviço
+      const serviceOrders = storageService.getServiceOrders();
+      const order = serviceOrders.find(o => o.id === serviceOrderId);
+      
+      if (order && order.devices) {
+        return order.devices;
+      }
+      
+      return [];
     } catch (error) {
-      console.error('Erro ao carregar dispositivos do Supabase:', error);
+      console.error('Erro ao carregar dispositivos do localStorage:', error);
       return [];
     }
   }
@@ -258,12 +208,18 @@ class ActivityService {
   // Limpar dados da atividade quando a OS for finalizada
   async cleanupActivityData(serviceOrderId: string): Promise<void> {
     try {
-      // Deletar estado da atividade
-      await supabase
-        .from('service_activity_state')
-        .delete()
-        .eq('service_order_id', serviceOrderId);
-
+      // Remover todos os dados relacionados a esta ordem de serviço
+      const keys = [
+        `activityState_${serviceOrderId}`,
+        `serviceList_${serviceOrderId}`,
+        `pestCounts_${serviceOrderId}`,
+        `devices_${serviceOrderId}`
+      ];
+      
+      keys.forEach(key => {
+        localStorage.removeItem(key);
+      });
+      
       console.log('Dados da atividade limpos para a OS:', serviceOrderId);
     } catch (error) {
       console.error('Erro ao limpar dados da atividade:', error);
@@ -274,42 +230,31 @@ class ActivityService {
   // Obter ordem de serviço ativa
   async getActiveServiceOrder(): Promise<any | null> {
     try {
-      const { data, error } = await supabase
-        .from('service_orders')
-        .select('*')
-        .eq('status', 'in_progress')
-        .single();
-
-      if (error) {
-        if (error.code === 'PGRST116') {
-          // Nenhum registro encontrado
-          return null;
-        }
-        throw error;
-      }
-
-      return data;
+      const serviceOrders = storageService.getServiceOrders();
+      const activeOrder = serviceOrders.find(order => order.status === 'in_progress');
+      
+      return activeOrder || null;
     } catch (error) {
       console.error('Erro ao buscar ordem de serviço ativa:', error);
       return null;
     }
   }
 
-  // Atualizar horário de início no Supabase
+  // Atualizar horário de início no localStorage
   async updateStartTime(serviceOrderId: string, startTime: Date): Promise<void> {
     try {
-      const { error } = await supabase
-        .from('service_orders')
-        .update({ start_time: startTime.toISOString() })
-        .eq('id', serviceOrderId);
-
-      if (error) {
-        throw error;
-      }
-
-      console.log('Horário de início atualizado no Supabase:', startTime);
+      const serviceOrders = storageService.getServiceOrders();
+      const updatedOrders = serviceOrders.map(order => {
+        if (order.id === serviceOrderId) {
+          return { ...order, start_time: startTime.toISOString() };
+        }
+        return order;
+      });
+      
+      storageService.saveServiceOrders(updatedOrders);
+      console.log('Horário de início atualizado no localStorage:', startTime);
     } catch (error) {
-      console.error('Erro ao atualizar horário de início no Supabase:', error);
+      console.error('Erro ao atualizar horário de início no localStorage:', error);
       throw error;
     }
   }

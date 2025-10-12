@@ -2,11 +2,12 @@ import { Capacitor } from '@capacitor/core';
 import { Share } from '@capacitor/share';
 import { Toast } from '@capacitor/toast';
 import { Filesystem, Directory } from '@capacitor/filesystem';
+import { indexedDBService } from './indexedDBService';
 
 export interface FileSharingOptions {
   filename: string;
   data?: string; // Base64 data (opcional)
-  orderNumber?: string; // Para buscar do localStorage
+  orderNumber?: string; // Para buscar do armazenamento
   mimeType?: string;
 }
 
@@ -14,16 +15,28 @@ class FileSharingService {
   private isAndroid = Capacitor.getPlatform() === 'android';
 
   /**
-   * Obtém dados do PDF do localStorage
+   * Obtém dados do PDF do IndexedDB
    */
-  private getPDFFromStorage(orderNumber: string): string | null {
+  private async getPDFFromStorage(orderNumber: string): Promise<string | null> {
     try {
-      const storedPDFs = JSON.parse(localStorage.getItem('safeprag_service_order_pdfs') || '{}');
-      const pdfData = storedPDFs[orderNumber];
+      // Inicializar IndexedDB se necessário
+      await indexedDBService.initDB();
+      
+      // Buscar PDF do IndexedDB
+      const pdfData = await indexedDBService.getPDF(orderNumber);
       return pdfData ? pdfData.pdf : null;
     } catch (error) {
-      console.error('Erro ao obter PDF do storage:', error);
-      return null;
+      console.error('Erro ao obter PDF do IndexedDB:', error);
+      
+      // Fallback para localStorage (para compatibilidade durante transição)
+      try {
+        const storedPDFs = JSON.parse(localStorage.getItem('safeprag_service_order_pdfs') || '{}');
+        const pdfData = storedPDFs[orderNumber];
+        return pdfData ? pdfData.pdf : null;
+      } catch (fallbackError) {
+        console.error('Erro ao obter PDF do localStorage (fallback):', fallbackError);
+        return null;
+      }
     }
   }
 
@@ -85,13 +98,13 @@ class FileSharingService {
       const cleanFilename = options.filename.replace(/[^a-zA-Z0-9.-]/g, '_');
       console.log('Nome do arquivo limpo:', cleanFilename);
       
-      // Se temos orderNumber, busca do localStorage
+      // Se temos orderNumber, busca do IndexedDB
       let pdfData = options.data;
       if (options.orderNumber && !pdfData) {
-        console.log('Buscando PDF do localStorage para ordem:', options.orderNumber);
-        const storedData = this.getPDFFromStorage(options.orderNumber);
+        console.log('Buscando PDF do armazenamento para ordem:', options.orderNumber);
+        const storedData = await this.getPDFFromStorage(options.orderNumber);
         if (!storedData) {
-          console.error('PDF não encontrado no localStorage');
+          console.error('PDF não encontrado no armazenamento');
           await this.showToast('PDF não encontrado no armazenamento');
           return false;
         }
@@ -195,14 +208,32 @@ class FileSharingService {
   }
 
   /**
-   * Compartilha PDF de uma ordem de serviço específica
+   * Compartilha uma ordem de serviço PDF
    */
   async shareServiceOrderPDF(orderNumber: string): Promise<boolean> {
-    return this.shareFile({
-      filename: `OS_${orderNumber}.pdf`,
-      orderNumber: orderNumber,
-      mimeType: 'application/pdf'
-    });
+    try {
+      console.log('Compartilhando ordem de serviço:', orderNumber);
+      
+      // Buscar dados do PDF do armazenamento
+      const pdfData = await this.getPDFFromStorage(orderNumber);
+      if (!pdfData) {
+        throw new Error('PDF não encontrado no armazenamento');
+      }
+      
+      // Construir nome do arquivo
+      const filename = `ordem-servico-${orderNumber}.pdf`;
+      
+      // Compartilhar o arquivo
+      return await this.shareFile({
+        filename,
+        data: pdfData,
+        mimeType: 'application/pdf'
+      });
+    } catch (error) {
+      console.error('Erro ao compartilhar ordem de serviço:', error);
+      await this.showToast('Erro ao compartilhar PDF');
+      return false;
+    }
   }
 
   /**
@@ -264,4 +295,4 @@ class FileSharingService {
   }
 }
 
-export const fileSharingService = new FileSharingService(); 
+export const fileSharingService = new FileSharingService();

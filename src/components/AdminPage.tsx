@@ -554,17 +554,17 @@ export const AdminPage = () => {
   };
 
   return (
-    <div className="container mx-auto px-4 py-8">
+    <div className="w-full max-w-none px-6 py-8">
       <h1 className="text-2xl font-bold mb-6">Configurações do Sistema</h1>
 
-      <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
         {/* Seção de Migração */}
         {/* <div className="col-span-1 md:col-span-2">
           <MigrationTool />
         </div> */}
 
         {/* Seção da Empresa */}
-        <div className="bg-white shadow rounded-lg p-6">
+        <div className="bg-white shadow rounded-lg p-6 lg:col-span-2 xl:col-span-3">
           <div className="flex justify-between items-center mb-4 sm:mb-6">
             <h2 className="text-xl sm:text-2xl font-bold text-center">Empresa</h2>
           </div>

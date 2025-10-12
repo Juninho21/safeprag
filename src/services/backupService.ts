@@ -1,5 +1,6 @@
 // Serviço de Backup/Restore Local para modo offline
 import { STORAGE_KEYS, ADDITIONAL_KEYS } from './storageKeys';
+import { supabase } from '../config/supabase';
 
 export interface BackupData {
   timestamp: string;
@@ -122,13 +123,64 @@ export const exportBackupToFile = (backup: BackupData): void => {
 };
 
 /**
- * Importa backup de um arquivo
+ * Salva backup no Supabase Storage
  */
-export const importBackupFromFile = (file: File): Promise<BackupData> => {
+export const saveBackupToSupabase = async (backup: BackupData, fileName?: string): Promise<{ success: boolean; url?: string; error?: string }> => {
+  try {
+    console.log('☁️ Salvando backup no Supabase Storage...');
+
+    // Gerar nome do arquivo único para evitar conflitos
+    const timestamp = new Date().toISOString().replace(/[:.]/g, '-');
+    const baseName = fileName ? fileName.replace(/\.json$/i, '') : 'backup';
+    const backupFileName = `${baseName}-${timestamp}.json`;
+
+    console.log(`📁 Nome do arquivo: ${backupFileName}`);
+
+    // Converter backup para Blob
+    const dataStr = JSON.stringify(backup, null, 2);
+    const dataBlob = new Blob([dataStr], { type: 'application/json' });
+    console.log(`📊 Tamanho do arquivo: ${dataBlob.size} bytes`);
+
+    // Fazer upload para o Supabase Storage
+    const { data, error } = await supabase.storage
+      .from('backups')
+      .upload(backupFileName, dataBlob, {
+        cacheControl: '3600',
+        upsert: true,
+        contentType: 'application/json'
+      });
+
+    if (error) {
+      console.error('❌ Erro ao fazer upload para Supabase:', error);
+      console.error('Mensagem do erro:', error.message);
+      return { success: false, error: `Upload falhou: ${error.message}` };
+    }
+
+    console.log('✅ Upload realizado com sucesso:', data);
+
+    // Obter URL pública do arquivo
+    const { data: urlData } = supabase.storage
+      .from('backups')
+      .getPublicUrl(backupFileName);
+
+    console.log('✅ Backup salvo no Supabase com sucesso:', urlData.publicUrl);
+    return { success: true, url: urlData.publicUrl };
+  } catch (error) {
+    const errorMsg = `Erro ao salvar backup no Supabase: ${error instanceof Error ? error.message : 'Erro desconhecido'}`;
+    console.error('❌', errorMsg);
+    console.error('Stack trace:', error instanceof Error ? error.stack : 'N/A');
+    return { success: false, error: errorMsg };
+  }
+};
+
+/**
+ * Importa backup de um arquivo e salva automaticamente no Supabase
+ */
+export const importBackupFromFile = (file: File, saveToSupabase: boolean = true): Promise<BackupData> => {
   return new Promise((resolve, reject) => {
     const reader = new FileReader();
     
-    reader.onload = (event) => {
+    reader.onload = async (event) => {
       try {
         const content = event.target?.result as string;
         const backup: BackupData = JSON.parse(content);
@@ -139,6 +191,19 @@ export const importBackupFromFile = (file: File): Promise<BackupData> => {
         }
         
         console.log('✅ Arquivo de backup importado com sucesso');
+        
+        // Salvar no Supabase se solicitado
+        if (saveToSupabase) {
+          const result = await saveBackupToSupabase(backup, file.name);
+          if (result.success) {
+            console.log('✅ Backup também salvo no Supabase');
+          } else {
+            console.error('❌ Falha ao salvar backup no Supabase:', result.error);
+            // Não falhar a importação por causa do Supabase, apenas logar o erro
+            console.warn('⚠️ Backup importado localmente, mas não foi possível salvar no Supabase:', result.error);
+          }
+        }
+        
         resolve(backup);
       } catch (error) {
         const errorMsg = `Erro ao importar backup: ${error instanceof Error ? error.message : 'Erro desconhecido'}`;
@@ -155,6 +220,134 @@ export const importBackupFromFile = (file: File): Promise<BackupData> => {
     
     reader.readAsText(file);
   });
+};
+
+/**
+ * Testa a conexão com o Supabase Storage e verifica se o bucket existe
+ */
+export const testSupabaseStorageConnection = async (): Promise<{ success: boolean; buckets?: any[]; error?: string }> => {
+  try {
+    console.log('🔍 Testando conexão com Supabase Storage...');
+
+    // Tentar listar buckets disponíveis
+    const { data: buckets, error: bucketsError } = await supabase.storage.listBuckets();
+
+    if (bucketsError) {
+      console.error('❌ Erro ao listar buckets:', bucketsError);
+      return { success: false, error: `Erro ao listar buckets: ${bucketsError.message}` };
+    }
+
+    console.log('✅ Buckets disponíveis:', buckets?.map(b => b.name));
+
+    // Verificar se o bucket 'backups' existe
+    const backupsBucket = buckets?.find(b => b.name === 'backups');
+    if (!backupsBucket) {
+      console.error('❌ Bucket "backups" não encontrado!');
+      return { success: false, error: 'Bucket "backups" não existe. Execute o script setup_backup_bucket.sql no Supabase.' };
+    }
+
+    console.log('✅ Bucket "backups" encontrado:', backupsBucket);
+    return { success: true, buckets };
+  } catch (error) {
+    const errorMsg = `Erro ao testar conexão com Storage: ${error instanceof Error ? error.message : 'Erro desconhecido'}`;
+    console.error('❌', errorMsg);
+    return { success: false, error: errorMsg };
+  }
+};
+
+/**
+ * Lista backups disponíveis no Supabase Storage
+ */
+export const listSupabaseBackups = async (): Promise<{ success: boolean; files?: any[]; error?: string }> => {
+  try {
+    console.log('📋 Listando backups do Supabase...');
+
+    // Primeiro testar se o bucket existe
+    const testResult = await testSupabaseStorageConnection();
+    if (!testResult.success) {
+      return { success: false, error: testResult.error };
+    }
+
+    const { data, error } = await supabase.storage
+      .from('backups')
+      .list('', {
+        limit: 100,
+        offset: 0,
+        sortBy: { column: 'created_at', order: 'desc' }
+      });
+
+    if (error) {
+      console.error('Erro ao listar backups do Supabase:', error);
+      console.error('Mensagem do erro:', error.message);
+      return { success: false, error: `Erro ao listar: ${error.message}` };
+    }
+
+    console.log(`✅ ${data?.length || 0} backup(s) encontrado(s) no Supabase`);
+    return { success: true, files: data };
+  } catch (error) {
+    const errorMsg = `Erro ao listar backups: ${error instanceof Error ? error.message : 'Erro desconhecido'}`;
+    console.error(errorMsg);
+    return { success: false, error: errorMsg };
+  }
+};
+
+/**
+ * Baixa um backup específico do Supabase Storage
+ */
+export const downloadBackupFromSupabase = async (fileName: string): Promise<{ success: boolean; backup?: BackupData; error?: string }> => {
+  try {
+    console.log(`⬇️ Baixando backup ${fileName} do Supabase...`);
+    
+    const { data, error } = await supabase.storage
+      .from('backups')
+      .download(fileName);
+    
+    if (error) {
+      console.error('Erro ao baixar backup do Supabase:', error);
+      return { success: false, error: error.message };
+    }
+    
+    // Converter Blob para texto e fazer parse
+    const text = await data.text();
+    const backup: BackupData = JSON.parse(text);
+    
+    // Validar estrutura
+    if (!backup.timestamp || !backup.version || !backup.data) {
+      throw new Error('Arquivo de backup inválido: estrutura incorreta');
+    }
+    
+    console.log('✅ Backup baixado do Supabase com sucesso');
+    return { success: true, backup };
+  } catch (error) {
+    const errorMsg = `Erro ao baixar backup: ${error instanceof Error ? error.message : 'Erro desconhecido'}`;
+    console.error(errorMsg);
+    return { success: false, error: errorMsg };
+  }
+};
+
+/**
+ * Remove um backup do Supabase Storage
+ */
+export const deleteBackupFromSupabase = async (fileName: string): Promise<{ success: boolean; error?: string }> => {
+  try {
+    console.log(`🗑️ Removendo backup ${fileName} do Supabase...`);
+    
+    const { error } = await supabase.storage
+      .from('backups')
+      .remove([fileName]);
+    
+    if (error) {
+      console.error('Erro ao remover backup do Supabase:', error);
+      return { success: false, error: error.message };
+    }
+    
+    console.log('✅ Backup removido do Supabase com sucesso');
+    return { success: true };
+  } catch (error) {
+    const errorMsg = `Erro ao remover backup: ${error instanceof Error ? error.message : 'Erro desconhecido'}`;
+    console.error(errorMsg);
+    return { success: false, error: errorMsg };
+  }
 };
 
 /**

@@ -9,7 +9,7 @@ interface PestCountingModalProps {
     id: number;
     type: string;
     number: number;
-    status: string;
+    status: string | string[];
   }>;
   onSavePestCounts: (pestCounts: DevicePestCount[]) => void;
   savedPestCounts?: DevicePestCount[];
@@ -42,10 +42,19 @@ export const PestCountingModal: React.FC<PestCountingModalProps> = ({
           {devices && devices.length > 0 ? (
             <div className="bg-white rounded-lg p-4">
               <DevicePestCounter
-                devices={devices.filter(device => device.status !== 'inativo').map(device => ({
-                  type: device.type,
-                  number: device.number || device.id
-                }))}
+                devices={devices
+                  .filter(device => {
+                    const statusList = Array.isArray(device.status)
+                      ? device.status
+                      : device.status
+                        ? [device.status]
+                        : [];
+                    return !statusList.includes('inativo');
+                  })
+                  .map(device => ({
+                    type: device.type,
+                    number: device.number || device.id
+                  }))}
                 onSavePestCounts={(counts) => {
                   onSavePestCounts(counts);
                 }}

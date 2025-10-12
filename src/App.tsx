@@ -396,6 +396,57 @@ function App() {
     }
 
     // Adicionar listener para o evento de início de OS
+    const handleServiceOrderStart = (event: CustomEvent) => {
+      const { startTime } = event.detail;
+      dispatch({ type: 'SET_START_TIME', payload: new Date(startTime) });
+
+      // Limpa resumo de pragas ao iniciar nova OS
+      localStorage.removeItem('pestCounts');
+      localStorage.removeItem('safeprag_pest_counts');
+    };
+
+    window.addEventListener('serviceOrderStarted', handleServiceOrderStart as EventListener);
+
+    // Listener adicional para o evento 'serviceStart' (usado pelo fluxo atual de criação de OS)
+    const handleServiceStart = (event: CustomEvent) => {
+      // Garantir limpeza mesmo quando o evento for diferente
+      localStorage.removeItem('pestCounts');
+      localStorage.removeItem('safeprag_pest_counts');
+    };
+    window.addEventListener('serviceStart', handleServiceStart as EventListener);
+
+    return () => {
+      window.removeEventListener('serviceOrderStarted', handleServiceOrderStart as EventListener);
+      window.removeEventListener('serviceStart', handleServiceStart as EventListener);
+    };
+  }, []);
+
+  useEffect(() => {
+    // Adicionar efeito para verificar OS em andamento
+    const savedOrders = localStorage.getItem('serviceOrders');
+    if (savedOrders) {
+      const orders = JSON.parse(savedOrders);
+      const activeOrder = orders.find(order => order.status === 'in_progress');
+      if (activeOrder) {
+        dispatch({ type: 'SET_START_TIME', payload: new Date(activeOrder.createdAt) });
+        
+        // Usar dados da OS diretamente do localStorage
+        localStorage.setItem('selectedClient', JSON.stringify({
+          id: activeOrder.clientId,
+          name: activeOrder.clientName,
+          address: activeOrder.clientAddress,
+          phone: 'N/A',
+          contact: 'N/A',
+          email: 'N/A',
+          cnpj: 'N/A',
+          city: 'N/A',
+          state: 'N/A',
+          code: 'N/A'
+        }));
+      }
+    }
+
+    // Adicionar listener para o evento de início de OS
     const handleServiceStart = (event: CustomEvent) => {
       const { startTime } = event.detail;
       dispatch({ type: 'SET_START_TIME', payload: new Date(startTime) });
@@ -437,6 +488,10 @@ function App() {
     const handleServiceOrderStart = (event: CustomEvent) => {
       const { startTime } = event.detail;
       dispatch({ type: 'SET_START_TIME', payload: new Date(startTime) });
+
+      // Limpa resumo de pragas ao iniciar nova OS
+      localStorage.removeItem('pestCounts');
+      localStorage.removeItem('safeprag_pest_counts');
     };
 
     window.addEventListener('serviceOrderStarted', handleServiceOrderStart as EventListener);

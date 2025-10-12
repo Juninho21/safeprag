@@ -5,10 +5,12 @@ import { Button } from '../ui/button';
 import { Modal } from '../Modal';
 import { STORAGE_KEYS, backupAllData, restoreBackup } from '../../services/storageKeys';
 import { cleanupSystemData } from '../../services/ordemServicoService';
+import { saveBackupToSupabase } from '../../services/backupService'; // Import the saveBackupToSupabase function
 
 const BackupMaintenance = () => {
   const [showRestoreModal, setShowRestoreModal] = useState(false);
   const [backupData, setBackupData] = useState('');
+  const [backupFileName, setBackupFileName] = useState(''); // Store the backup file name
   const fileInputRef = useRef<HTMLInputElement>(null);
 
   const handleBackup = () => {
@@ -37,12 +39,33 @@ const BackupMaintenance = () => {
     setShowRestoreModal(true);
   };
 
-  const handleRestoreConfirm = () => {
+  const handleRestoreConfirm = async () => {
     try {
       const backupObj = JSON.parse(backupData);
       restoreBackup(backupObj);
+      
+      // Save the backup file to Supabase storage
+      try {
+        // Create a BackupData object similar to what's used in backupService
+        const backupForSupabase = {
+          timestamp: new Date().toISOString(),
+          version: '1.0.0',
+          data: backupObj
+        };
+        
+        const result = await saveBackupToSupabase(backupForSupabase, backupFileName);
+        if (result.success) {
+          console.log('Backup também salvo no Supabase com sucesso!');
+        } else {
+          console.error('Erro ao salvar backup no Supabase:', result.error);
+        }
+      } catch (supabaseError) {
+        console.error('Erro ao salvar backup no Supabase:', supabaseError);
+      }
+      
       setShowRestoreModal(false);
       setBackupData('');
+      setBackupFileName('');
       // toast.success('Backup restaurado com sucesso!');
       console.log('Backup restaurado com sucesso!');
       window.location.reload(); // Recarrega a página para atualizar os dados
@@ -56,6 +79,9 @@ const BackupMaintenance = () => {
   const handleFileUpload = (event: React.ChangeEvent<HTMLInputElement>) => {
     const file = event.target.files?.[0];
     if (!file) return;
+    
+    // Store the file name
+    setBackupFileName(file.name);
     
     const reader = new FileReader();
     reader.onload = (e) => {
@@ -147,6 +173,7 @@ const BackupMaintenance = () => {
         onRequestClose={() => {
           setShowRestoreModal(false);
           setBackupData('');
+          setBackupFileName('');
         }}
       >
         <div className="p-6 space-y-4">
@@ -188,6 +215,7 @@ const BackupMaintenance = () => {
                 onClick={() => {
                   setShowRestoreModal(false);
                   setBackupData('');
+                  setBackupFileName('');
                 }}
                 className="w-full sm:w-auto"
               >

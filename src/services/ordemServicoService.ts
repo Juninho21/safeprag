@@ -129,6 +129,7 @@ export const forceCleanupActiveOrders = async (): Promise<void> => {
     localStorage.removeItem('pestCounts');
     localStorage.removeItem('retroactive_service_data');
     localStorage.removeItem('serviceStartTime');
+    localStorage.removeItem(STORAGE_KEYS.PEST_COUNTS);
     
     console.log('Limpeza de ordens ativas concluída.');
   } catch (error) {
@@ -211,6 +212,7 @@ export const createServiceOrder = async (schedule: Schedule): Promise<ServiceOrd
     // Limpa dados da página de atividade antes de iniciar nova OS
     localStorage.removeItem('pestCounts');
     localStorage.removeItem('retroactive_service_data');
+    localStorage.removeItem(STORAGE_KEYS.PEST_COUNTS);
     
     // Dispara evento específico de início de OS
     const startEvent = new CustomEvent('serviceStart', {

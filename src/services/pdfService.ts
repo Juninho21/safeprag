@@ -6,6 +6,7 @@ import { getNextOSNumber } from './counterService';
 // Removido: imports do Supabase
 import { fileSharingService } from './fileSharingService';
 import { Capacitor } from '@capacitor/core';
+import { indexedDBService } from './indexedDBService';
 
 interface CompanyData {
   name: string;
@@ -41,12 +42,12 @@ const COMPANY_STORAGE_KEY = 'safeprag_company_data';
 const SERVICE_ORDERS_KEY = 'safeprag_service_orders';
 const SCHEDULES_KEY = 'safeprag_schedules';
 
-// Função para salvar o PDF no localStorage
+// Função para salvar o PDF no IndexedDB
 export const storeServiceOrderPDF = (pdfBlob: Blob, serviceData: ServiceOrderPDFData): void => {
   try {
     // Converter Blob para base64
     const reader = new FileReader();
-    reader.onloadend = () => {
+    reader.onloadend = async () => {
       const base64PDF = (reader.result as string).split(',')[1];
       
       // Determinar o tipo de serviço principal para exibição
@@ -56,19 +57,19 @@ export const storeServiceOrderPDF = (pdfBlob: Blob, serviceData: ServiceOrderPDF
         ? serviceData.services[0].type
         : (serviceData.service ? serviceData.service.type : 'Serviço');
       
-      // Armazena no localStorage
-      const storedPDFs = JSON.parse(localStorage.getItem('safeprag_service_order_pdfs') || '{}');
-      storedPDFs[serviceData.orderNumber] = {
+      // Inicializar IndexedDB se necessário
+      await indexedDBService.initDB();
+      
+      // Armazenar no IndexedDB
+      await indexedDBService.storePDF({
+        orderNumber: serviceData.orderNumber,
         pdf: base64PDF,
         createdAt: new Date().toISOString(),
         clientName: serviceData.client.name,
         serviceType: serviceType,
-        orderNumber: serviceData.orderNumber,
-        // Armazena a lista completa de serviços para referência
+        clientCode: serviceData.client.code,
         services: serviceData.services || [serviceData.service]
-      };
-      
-      localStorage.setItem('safeprag_service_order_pdfs', JSON.stringify(storedPDFs));
+      });
     };
     reader.readAsDataURL(pdfBlob);
   } catch (error) {
@@ -78,11 +79,16 @@ export const storeServiceOrderPDF = (pdfBlob: Blob, serviceData: ServiceOrderPDF
 };
 
 // Função para obter todos os PDFs armazenados
-export const getAllStoredPDFs = () => {
+export const getAllStoredPDFs = async () => {
   try {
-    const storedPDFs = JSON.parse(localStorage.getItem('safeprag_service_order_pdfs') || '{}');
-    return Object.entries(storedPDFs).map(([orderNumber, data]: [string, any]) => ({
-      orderNumber,
+    // Inicializar IndexedDB se necessário
+    await indexedDBService.initDB();
+    
+    // Buscar todos os PDFs do IndexedDB
+    const pdfs = await indexedDBService.getAllPDFs();
+    
+    return pdfs.map(data => ({
+      orderNumber: data.orderNumber,
       createdAt: data.createdAt,
       clientName: data.clientName,
       serviceType: data.serviceType,
@@ -97,8 +103,11 @@ export const getAllStoredPDFs = () => {
 // Função para baixar um PDF específico
 export const downloadPDFFromStorage = async (orderNumber: string): Promise<void> => {
   try {
-    const storedPDFs = JSON.parse(localStorage.getItem('safeprag_service_order_pdfs') || '{}');
-    const pdfData = storedPDFs[orderNumber];
+    // Inicializar IndexedDB se necessário
+    await indexedDBService.initDB();
+    
+    // Buscar PDF do IndexedDB
+    const pdfData = await indexedDBService.getPDF(orderNumber);
     
     if (!pdfData) {
       throw new Error('PDF não encontrado');
@@ -465,7 +474,8 @@ export const generateServiceOrderPDF = async (
         font-family: Arial, sans-serif;
       }
       .section-container {
-        page-break-inside: avoid;
+        page-break-inside: auto;
+        break-inside: auto;
         margin-bottom: 10px;
       }
       .complementary-section {
@@ -475,6 +485,26 @@ export const generateServiceOrderPDF = async (
         margin: 0;
         padding: 0;
         page-break-inside: avoid;
+      }
+      /* Evitar cortes dentro de cada linha da tabela, permitindo que a própria tabela quebre entre páginas e repetindo cabeçalho */
+      thead { display: table-header-group; page-break-after: avoid; break-after: avoid; }
+      tbody { display: table-row-group; }
+      tfoot { display: table-footer-group; }
+      table, thead, tbody, tfoot { 
+        page-break-inside: auto; 
+        break-inside: auto; 
+      }
+      tr { 
+        page-break-inside: avoid !important; 
+        break-inside: avoid !important; 
+      }
+      td, th { 
+        page-break-inside: auto; 
+        break-inside: auto; 
+      }
+      tbody tr:first-child { 
+        page-break-before: avoid; 
+        break-before: avoid; 
       }
     `;
     document.head.appendChild(style);
@@ -489,16 +519,16 @@ export const generateServiceOrderPDF = async (
     header.innerHTML = `
       <table style="width: 100%; border-collapse: collapse;">
         <tr>
-          <td style="width: 33%; vertical-align: top;">
-            <img src="${companyData?.logo_url || ''}" alt="Logo" style="width: 150px; margin-bottom: 5px;">
+          <td style="width: 33%; vertical-align: top; padding: 0;">
+            <img src="${companyData?.logo_url || ''}" alt="Logo" style="width: 200px; margin-top: 2px; margin-bottom: 5px;">
           </td>
           <td style="width: 33%; text-align: center; vertical-align: middle;">
             <div style="font-size: 18px; font-weight: bold;">
               Ordem De Serviço
             </div>
           </td>
-          <td style="width: 33%; text-align: right; vertical-align: top;">
-            <div style="font-size: 14px; font-weight: bold; color: #000;">
+          <td style="width: 33%; text-align: right; vertical-align: top; padding: 0;">
+            <div style="font-size: 12px; color: #000;">
               Nº O.S.: ${serviceData.orderNumber}
             </div>
           </td>
@@ -528,15 +558,15 @@ export const generateServiceOrderPDF = async (
     licensesContainer.style.display = 'flex';
     licensesContainer.style.justifyContent = 'space-between';
     licensesContainer.style.fontSize = '12px';
-    licensesContainer.style.marginTop = '5px';
+    licensesContainer.style.marginTop = '0px';
     licensesContainer.style.marginBottom = '5px';
-    licensesContainer.style.paddingTop = '5px';
-    licensesContainer.style.borderTop = '1px solid #000';
+    licensesContainer.style.paddingTop = '0px';
+    licensesContainer.style.borderTop = 'none';
 
-    // Licença Ambiental
+    // Licença Ambiental (sem prefixo LO)
     const environmentalLicense = document.createElement('div');
     environmentalLicense.innerHTML = companyData?.environmental_license?.number ? 
-      `Licença Ambiental: LO ${companyData.environmental_license.number} - Validade: ${formatDate(companyData.environmental_license.date)}` : '';
+      `Licença Ambiental: ${companyData.environmental_license.number} - Validade: ${formatDate(companyData.environmental_license.date)}` : '';
 
     // Alvará Sanitário
     const sanitaryPermit = document.createElement('div');
@@ -549,10 +579,11 @@ export const generateServiceOrderPDF = async (
 
     // Linha divisória
     const divider = document.createElement('div');
-    divider.style.width = '100%';
-    divider.style.height = '1px';
-    divider.style.backgroundColor = '#000';
-    divider.style.margin = '5px 0';
+    // divider removido para não exibir linha acima do email
+    divider.style.width = '0';
+    divider.style.height = '0';
+    divider.style.backgroundColor = 'transparent';
+    divider.style.margin = '0';
 
     // Seção de serviço por contrato
     const serviceSection = document.createElement('div');
@@ -579,31 +610,32 @@ export const generateServiceOrderPDF = async (
     const finalClientData = selectedClientData || serviceData.client || {};
     
     clientSection.innerHTML = `
-      <div style="background-color: #1a73e8; color: white; padding: 5px 10px; margin: 10px 0;">Dados Do Cliente</div>
-      <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 10px; font-size: 11px;">
-        <div>
-          <div>Código Do Cliente: ${finalClientData?.code || finalClientData?.id || ''}</div>
-          <div>Razão Social: ${finalClientData?.razaoSocial || finalClientData?.branch || finalClientData?.name || ''}</div>
-          <div>Nome Fantasia: ${finalClientData?.nomeFantasia || finalClientData?.fantasyName || ''}</div>
-          <div>CNPJ/CPF: ${finalClientData?.cnpj || finalClientData?.document || ''}</div>
-          <div>Cidade: ${finalClientData?.cidade || finalClientData?.city || ''}</div>
-        </div>
-        <div>
-          <div>Endereço: ${finalClientData?.endereco || finalClientData?.address || ''}</div>
-          <div>Telefone: ${finalClientData?.telefone || finalClientData?.phone || ''}</div>
-          <div>Contato: ${finalClientData?.contato || finalClientData?.contact || ''}</div>
-          <div>Email: ${finalClientData?.email || ''}</div>
-        </div>
-      </div>
+      <div style="background-color: #1a73e8; color: white; padding: 3px 10px; margin: 10px 0; font-size: 13px; text-align: left;"><span style="transform: translateY(-6px); display: inline-block;">Dados Do Cliente</span></div>
+      <table style="width: 100%; border-collapse: collapse; margin-top: 5px; font-size: 12px;">
+        <tr>
+          <td style="width: 50%; line-height: 1.3;">
+            <div>Código Do Cliente: ${finalClientData?.code || finalClientData?.id || ''}</div>
+            <div>Razão Social: ${finalClientData?.razaoSocial || finalClientData?.branch || finalClientData?.name || ''}</div>
+            <div>Nome Fantasia: ${finalClientData?.nomeFantasia || finalClientData?.fantasyName || ''}</div>
+            <div>CNPJ/CPF: ${finalClientData?.cnpj || finalClientData?.document || ''}</div>
+            <div>Cidade: ${finalClientData?.cidade || finalClientData?.city || ''}</div>
+          </td>
+          <td style="width: 50%; line-height: 1.3;">
+            <div>Endereço: ${finalClientData?.endereco || finalClientData?.address || ''}</div>
+            <div>Telefone: ${finalClientData?.telefone || finalClientData?.phone || ''}</div>
+            <div>Contato: ${finalClientData?.contato || finalClientData?.contact || ''}</div>
+            <div>Email: ${finalClientData?.email || ''}</div>
+          </td>
+        </tr>
+      </table>
     `;
 
     // Informações dos serviços
     const servicesInfoSection = document.createElement('div');
     servicesInfoSection.style.marginTop = '20px';
-    servicesInfoSection.style.backgroundColor = '#1a73e8';
-    servicesInfoSection.style.color = 'white';
-    servicesInfoSection.style.padding = '5px 10px';
-    servicesInfoSection.innerHTML = 'Informações Dos Serviços';
+    servicesInfoSection.innerHTML = `
+      <div style="background-color: #1a73e8; color: white; padding: 3px 10px; margin: 10px 0; font-size: 13px; text-align: left;"><span style="transform: translateY(-6px); display: inline-block;">Informações Dos Serviços</span></div>
+    `;
 
     // Tabela de serviço
     const serviceTable = document.createElement('div');
@@ -616,21 +648,20 @@ export const generateServiceOrderPDF = async (
     
     // Título da seção
     serviceTable.innerHTML = `
-      <div style="font-weight: bold; margin-bottom: 10px;">Tratamento${servicesToRender.length > 1 ? 's' : ''}</div>
       <table style="width: 100%; border-collapse: collapse; margin-bottom: 20px; font-size: 10px;">
         <thead>
           <tr style="background-color: #1a73e8; color: white;">
-            <th style="padding: 3px; text-align: center; border: 1px solid #ddd;">Serviço</th>
-            <th style="padding: 3px; text-align: center; border: 1px solid #ddd;">Praga Alvo</th>
-            <th style="padding: 3px; text-align: center; border: 1px solid #ddd;">Local</th>
+            <th style="padding: 3px; text-align: center; border: 1px solid #ddd; vertical-align: middle;"><span style="transform: translateY(-6px); display: inline-block;">Serviço</span></th>
+            <th style="padding: 3px; text-align: center; border: 1px solid #ddd; vertical-align: middle;"><span style="transform: translateY(-6px); display: inline-block;">Praga Alvo</span></th>
+            <th style="padding: 3px; text-align: center; border: 1px solid #ddd; vertical-align: middle;"><span style="transform: translateY(-6px); display: inline-block;">Local</span></th>
           </tr>
         </thead>
         <tbody>
           ${servicesToRender.map(service => service && service.type && service.target && service.location ? `
             <tr>
-              <td style="padding: 3px; border: 1px solid #ddd; text-align: center;">${service.type.charAt(0).toUpperCase() + service.type.slice(1)}</td>
-              <td style="padding: 3px; border: 1px solid #ddd; text-align: center;">${service.target.charAt(0).toUpperCase() + service.target.slice(1)}</td>
-              <td style="padding: 3px; border: 1px solid #ddd; text-align: center;">${service.location}</td>
+              <td style="padding: 8px 3px; border: 1px solid #ddd; text-align: center; vertical-align: middle;">${service.type.charAt(0).toUpperCase() + service.type.slice(1)}</td>
+              <td style="padding: 8px 3px; border: 1px solid #ddd; text-align: center; vertical-align: middle;">${service.target.charAt(0).toUpperCase() + service.target.slice(1)}</td>
+              <td style="padding: 8px 3px; border: 1px solid #ddd; text-align: center; vertical-align: middle;">${service.location}</td>
             </tr>
           ` : '').join('')}
         </tbody>
@@ -644,18 +675,18 @@ export const generateServiceOrderPDF = async (
     if (hasProducts) {
       const productsTable = document.createElement('div');
       productsTable.innerHTML = `
-        <div style="font-weight: bold; margin-bottom: 10px;">Produtos Utilizados</div>
+        <div style="background-color: #1a73e8; color: white; padding: 3px 10px; margin: 10px 0; font-size: 13px; text-align: left;"><span style="transform: translateY(-6px); display: inline-block;">Produtos Utilizados</span></div>
         <table style="width: 100%; border-collapse: collapse; font-size: 10px;">
           <thead>
             <tr style="background-color: #1a73e8; color: white;">
-              <th style="padding: 3px; text-align: center; border: 1px solid #ddd;">Produto (Concen.)</th>
-              <th style="padding: 3px; text-align: center; border: 1px solid #ddd;">Princípio Ativo</th>
-              <th style="padding: 3px; text-align: center; border: 1px solid #ddd;">Grupo Químico</th>
-              <th style="padding: 3px; text-align: center; border: 1px solid #ddd;">Registro</th>
-              <th style="padding: 3px; text-align: center; border: 1px solid #ddd;">Lote</th>
-              <th style="padding: 3px; text-align: center; border: 1px solid #ddd;">Validade</th>
-              <th style="padding: 3px; text-align: center; border: 1px solid #ddd;">Qtde.</th>
-              <th style="padding: 3px; text-align: center; border: 1px solid #ddd;">Diluente</th>
+              <th style="padding: 3px; text-align: center; border: 1px solid #ddd; vertical-align: middle;"><span style="transform: translateY(-6px); display: inline-block;">Produto (Concen.)</span></th>
+              <th style="padding: 3px; text-align: center; border: 1px solid #ddd; vertical-align: middle;"><span style="transform: translateY(-6px); display: inline-block;">Princípio Ativo</span></th>
+              <th style="padding: 3px; text-align: center; border: 1px solid #ddd; vertical-align: middle;"><span style="transform: translateY(-6px); display: inline-block;">Grupo Químico</span></th>
+              <th style="padding: 3px; text-align: center; border: 1px solid #ddd; vertical-align: middle;"><span style="transform: translateY(-6px); display: inline-block;">Registro</span></th>
+              <th style="padding: 3px; text-align: center; border: 1px solid #ddd; vertical-align: middle;"><span style="transform: translateY(-6px); display: inline-block;">Lote</span></th>
+              <th style="padding: 3px; text-align: center; border: 1px solid #ddd; vertical-align: middle;"><span style="transform: translateY(-6px); display: inline-block;">Validade</span></th>
+              <th style="padding: 3px; text-align: center; border: 1px solid #ddd; vertical-align: middle;"><span style="transform: translateY(-6px); display: inline-block;">Qtde.</span></th>
+              <th style="padding: 3px; text-align: center; border: 1px solid #ddd; vertical-align: middle;"><span style="transform: translateY(-6px); display: inline-block;">Diluente</span></th>
             </tr>
           </thead>
           <tbody>
@@ -667,14 +698,14 @@ export const generateServiceOrderPDF = async (
               // Se houver produto, renderiza a linha da tabela
               return `
                 <tr>
-                  <td style="padding: 3px; border: 1px solid #ddd; text-align: center;">${service.product.name || ''}</td>
-                  <td style="padding: 3px; border: 1px solid #ddd; text-align: center;">${service.product.activeIngredient || ''}</td>
-                  <td style="padding: 3px; border: 1px solid #ddd; text-align: center;">${service.product.chemicalGroup || ''}</td>
-                  <td style="padding: 3px; border: 1px solid #ddd; text-align: center;">${service.product.registration || ''}</td>
-                  <td style="padding: 3px; border: 1px solid #ddd; text-align: center;">${service.product.batch || ''}</td>
-                  <td style="padding: 3px; border: 1px solid #ddd; text-align: center;">${formatDate(service.product.validity) || ''}</td>
-                  <td style="padding: 3px; border: 1px solid #ddd; text-align: center;">${service.product.quantity || ''}</td>
-                  <td style="padding: 3px; border: 1px solid #ddd; text-align: center;">${service.product.dilution || ''}</td>
+                  <td style="padding: 8px 3px; border: 1px solid #ddd; text-align: center; vertical-align: middle;">${service.product.name || ''}</td>
+                  <td style="padding: 8px 3px; border: 1px solid #ddd; text-align: center; vertical-align: middle;">${service.product.activeIngredient || ''}</td>
+                  <td style="padding: 8px 3px; border: 1px solid #ddd; text-align: center; vertical-align: middle;">${service.product.chemicalGroup || ''}</td>
+                  <td style="padding: 8px 3px; border: 1px solid #ddd; text-align: center; vertical-align: middle;">${service.product.registration || ''}</td>
+                  <td style="padding: 8px 3px; border: 1px solid #ddd; text-align: center; vertical-align: middle;">${service.product.batch || ''}</td>
+                  <td style="padding: 8px 3px; border: 1px solid #ddd; text-align: center; vertical-align: middle;">${formatDate(service.product.validity) || ''}</td>
+                  <td style="padding: 8px 3px; border: 1px solid #ddd; text-align: center; vertical-align: middle;">${service.product.quantity || ''}</td>
+                  <td style="padding: 8px 3px; border: 1px solid #ddd; text-align: center; vertical-align: middle;">${service.product.dilution || ''}</td>
                 </tr>
               `;
             }).join('')}
@@ -686,30 +717,30 @@ export const generateServiceOrderPDF = async (
       // Compatibilidade com o formato antigo
       const legacyProductTable = document.createElement('div');
       legacyProductTable.innerHTML = `
-        <div style="font-weight: bold; margin-bottom: 10px;">Produtos Utilizados</div>
+        <div style="background-color: #1a73e8; color: white; padding: 3px 10px; margin: 10px 0; font-size: 13px; text-align: left;"><span style="transform: translateY(-6px); display: inline-block;">Produtos Utilizados</span></div>
         <table style="width: 100%; border-collapse: collapse; font-size: 10px;">
           <thead>
             <tr style="background-color: #1a73e8; color: white;">
-              <th style="padding: 3px; text-align: center; border: 1px solid #ddd;">Produto (Concen.)</th>
-              <th style="padding: 3px; text-align: center; border: 1px solid #ddd;">Princípio Ativo</th>
-              <th style="padding: 3px; text-align: center; border: 1px solid #ddd;">Grupo Químico</th>
-              <th style="padding: 3px; text-align: center; border: 1px solid #ddd;">Registro</th>
-              <th style="padding: 3px; text-align: center; border: 1px solid #ddd;">Lote</th>
-              <th style="padding: 3px; text-align: center; border: 1px solid #ddd;">Validade</th>
-              <th style="padding: 3px; text-align: center; border: 1px solid #ddd;">Qtde.</th>
-              <th style="padding: 3px; text-align: center; border: 1px solid #ddd;">Diluente</th>
+              <th style="padding: 3px; text-align: center; border: 1px solid #ddd; vertical-align: middle;"><span style="transform: translateY(-6px); display: inline-block;">Produto (Concen.)</span></th>
+              <th style="padding: 3px; text-align: center; border: 1px solid #ddd; vertical-align: middle;"><span style="transform: translateY(-6px); display: inline-block;">Princípio Ativo</span></th>
+              <th style="padding: 3px; text-align: center; border: 1px solid #ddd; vertical-align: middle;"><span style="transform: translateY(-6px); display: inline-block;">Grupo Químico</span></th>
+              <th style="padding: 3px; text-align: center; border: 1px solid #ddd; vertical-align: middle;"><span style="transform: translateY(-6px); display: inline-block;">Registro</span></th>
+              <th style="padding: 3px; text-align: center; border: 1px solid #ddd; vertical-align: middle;"><span style="transform: translateY(-6px); display: inline-block;">Lote</span></th>
+              <th style="padding: 3px; text-align: center; border: 1px solid #ddd; vertical-align: middle;"><span style="transform: translateY(-6px); display: inline-block;">Validade</span></th>
+              <th style="padding: 3px; text-align: center; border: 1px solid #ddd; vertical-align: middle;"><span style="transform: translateY(-6px); display: inline-block;">Qtde.</span></th>
+              <th style="padding: 3px; text-align: center; border: 1px solid #ddd; vertical-align: middle;"><span style="transform: translateY(-6px); display: inline-block;">Diluente</span></th>
             </tr>
           </thead>
           <tbody>
             <tr>
-              <td style="padding: 3px; border: 1px solid #ddd; text-align: center;">${serviceData.product.name || ''}</td>
-              <td style="padding: 3px; border: 1px solid #ddd; text-align: center;">${serviceData.product.activeIngredient || ''}</td>
-              <td style="padding: 3px; border: 1px solid #ddd; text-align: center;">${serviceData.product.chemicalGroup || ''}</td>
-              <td style="padding: 3px; border: 1px solid #ddd; text-align: center;">${serviceData.product.registration || ''}</td>
-              <td style="padding: 3px; border: 1px solid #ddd; text-align: center;">${serviceData.product.batch || ''}</td>
-              <td style="padding: 3px; border: 1px solid #ddd; text-align: center;">${formatDate(serviceData.product.validity) || ''}</td>
-              <td style="padding: 3px; border: 1px solid #ddd; text-align: center;">${serviceData.product.quantity || ''}</td>
-              <td style="padding: 3px; border: 1px solid #ddd; text-align: center;">${serviceData.product.dilution || ''}</td>
+              <td style="padding: 8px 3px; border: 1px solid #ddd; text-align: center; vertical-align: middle;">${serviceData.product.name || ''}</td>
+              <td style="padding: 8px 3px; border: 1px solid #ddd; text-align: center; vertical-align: middle;">${serviceData.product.activeIngredient || ''}</td>
+              <td style="padding: 8px 3px; border: 1px solid #ddd; text-align: center; vertical-align: middle;">${serviceData.product.chemicalGroup || ''}</td>
+              <td style="padding: 8px 3px; border: 1px solid #ddd; text-align: center; vertical-align: middle;">${serviceData.product.registration || ''}</td>
+              <td style="padding: 8px 3px; border: 1px solid #ddd; text-align: center; vertical-align: middle;">${serviceData.product.batch || ''}</td>
+              <td style="padding: 8px 3px; border: 1px solid #ddd; text-align: center; vertical-align: middle;">${formatDate(serviceData.product.validity) || ''}</td>
+              <td style="padding: 8px 3px; border: 1px solid #ddd; text-align: center; vertical-align: middle;">${serviceData.product.quantity || ''}</td>
+              <td style="padding: 8px 3px; border: 1px solid #ddd; text-align: center; vertical-align: middle;">${serviceData.product.dilution || ''}</td>
             </tr>
           </tbody>
         </table>
@@ -726,84 +757,97 @@ export const generateServiceOrderPDF = async (
     // Criar a seção de dispositivos se houver dispositivos salvos
     if (serviceData.devices && serviceData.devices.length > 0) {
       devicesSection = document.createElement('div');
-      devicesSection.style.marginTop = '20px';
-      devicesSection.innerHTML = `
-        <div style="font-weight: bold; margin-bottom: 10px;">Dispositivos Monitorados</div>
-        <table style="width: 100%; border-collapse: collapse; font-size: 10px;">
-          <thead>
-            <tr style="background-color: #1a73e8; color: white;">
-              <th style="padding: 3px; text-align: center; border: 1px solid #ddd;">Dispositivos</th>
-              <th style="padding: 3px; text-align: center; border: 1px solid #ddd; width: 10%;">Quant. Instalada</th>
-              <th style="padding: 3px; text-align: center; border: 1px solid #ddd;">Status</th>
-              <th style="padding: 3px; text-align: center; border: 1px solid #ddd;">Lista De Dispositivos</th>
-            </tr>
-          </thead>
-          <tbody>
-            ${serviceData.devices.map(device => {
-              // Função para agrupar números em sequências
-              const getSequences = (numbers: number[]): string => {
-                if (numbers.length === 0) return '';
-                
-                const sortedNumbers = [...numbers].sort((a, b) => a - b);
-                const sequences: string[] = [];
-                let start = sortedNumbers[0];
-                let prev = start;
+      devicesSection.style.marginTop = '8px';
+      // Se a seção for muito alta, adiciona sugestão de quebra antes, evitando grande espaço em branco
+      devicesSection.style.pageBreakBefore = 'auto';
+      devicesSection.style.breakBefore = 'auto';
+      const groupedDevices = serviceData.devices.reduce((acc: Record<string, any[]>, d: any) => {
+        acc[d.type] = acc[d.type] || [];
+        acc[d.type].push(d);
+        return acc;
+      }, {});
 
-                for (let i = 1; i <= sortedNumbers.length; i++) {
-                  if (i === sortedNumbers.length || sortedNumbers[i] !== prev + 1) {
-                    if (start === prev) {
-                      sequences.push(start.toString());
+      const devicesHTML = `
+        ${Object.entries(groupedDevices).map(([type, items], idx) => `
+           ${idx > 0 ? '<div class="html2pdf__page-break"></div>' : ''}
+           <table class="devices-table" style="width: 100%; border-collapse: collapse; font-size: 10px; margin-bottom: 6px;">
+            <thead style="display: table-header-group; page-break-after: avoid; break-after: avoid; page-break-inside: avoid;">
+              <tr style="background-color: #1a73e8; color: white;">
+                <th colspan="4" style="padding: 3px 8px; text-align: left; border: 1px solid #ddd; vertical-align: middle; line-height: 1.3;">
+                  <span style="transform: translateY(-6px); display: inline-block;">Dispositivos Monitorados</span>
+                </th>
+              </tr>
+              <tr style="background-color: #1a73e8; color: white;">
+                <th style="padding: 3px; text-align: center; border: 1px solid #ddd; vertical-align: middle; line-height: 1.3;">Dispositivos</th>
+                <th style="padding: 3px; text-align: center; border: 1px solid #ddd; width: 10%; vertical-align: middle; line-height: 1.3;">Quant. Instalada</th>
+                <th style="padding: 3px; text-align: center; border: 1px solid #ddd; vertical-align: middle; line-height: 1.3;">Status</th>
+                <th style="padding: 3px; text-align: center; border: 1px solid #ddd; vertical-align: middle; line-height: 1.3;">Lista De Dispositivos</th>
+              </tr>
+            </thead>
+            <tbody style="page-break-before: avoid; break-before: avoid;">
+              ${items.map((device, rowIdx) => {
+                const getSequences = (numbers: number[] = []): string => {
+                  if (!numbers || numbers.length === 0) return '';
+                  const sortedNumbers = [...numbers].sort((a, b) => a - b);
+                  const sequences: string[] = [];
+                  let start = sortedNumbers[0];
+                  let prev = start;
+                  for (let i = 1; i <= sortedNumbers.length; i++) {
+                    if (i === sortedNumbers.length || sortedNumbers[i] !== prev + 1) {
+                      if (start === prev) {
+                        sequences.push(start.toString());
+                      } else {
+                        sequences.push(`${start}-${prev}`);
+                      }
+                      if (i < sortedNumbers.length) {
+                        start = sortedNumbers[i];
+                        prev = start;
+                      }
                     } else {
-                      sequences.push(`${start}-${prev}`);
+                      prev = sortedNumbers[i];
                     }
-                    if (i < sortedNumbers.length) {
-                      start = sortedNumbers[i];
-                      prev = start;
-                    }
-                  } else {
-                    prev = sortedNumbers[i];
                   }
-                }
+                  return sequences.join(', ');
+                };
 
-                return sequences.join(', ');
-              };
-
-              return `
-                <tr>
-                  <td style="padding: 3px; border: 1px solid #ddd; text-align: center;">${device.type}</td>
-                  <td style="padding: 3px; border: 1px solid #ddd; text-align: center;">${device.quantity}</td>
-                  <td style="padding: 3px; border: 1px solid #ddd; text-align: center;">
-                    ${device.status
-                      .sort((a, b) => a.name.localeCompare(b.name))
-                      .map((statusItem, index, array) => {
-                        const percentage = ((statusItem.count / device.quantity) * 100).toFixed(1);
-                        return `
-                          <div style="font-size: 10px;">
-                            ${statusItem.name} (${statusItem.count} - ${percentage}%)
+                return `
+                  <tr style="page-break-inside: avoid; break-inside: avoid; ${'${rowIdx === 0 ? \'page-break-before: avoid; break-before: avoid;\' : \'\'}'}">
+                    <td style="padding: 8px 3px; border: 1px solid #ddd; text-align: center; vertical-align: middle;">${type}</td>
+                    <td style="padding: 8px 3px; border: 1px solid #ddd; text-align: center; vertical-align: middle;">${device.quantity}</td>
+                    <td style="padding: 8px 3px; border: 1px solid #ddd; text-align: center; vertical-align: middle;">
+                      ${device.status
+                        .sort((a, b) => a.name.localeCompare(b.name))
+                        .map((statusItem, index, array) => {
+                          const percentage = ((statusItem.count / device.quantity) * 100).toFixed(1);
+                          return `
+                            <div style="font-size: 10px;">
+                              ${statusItem.name} (${statusItem.count} - ${percentage}%)
+                              ${index < array.length - 1 ? '<br><br>' : ''}
+                            </div>
+                          `;
+                        }).join('')}
+                    </td>
+                    <td style="padding: 8px 3px; border: 1px solid #ddd; text-align: left; vertical-align: top; column-count: 2; column-gap: 12px; white-space: normal; word-break: break-word;">
+                      ${device.status
+                        .sort((a, b) => a.name.localeCompare(b.name))
+                        .map((statusItem, index, array) => {
+                          const sequence = getSequences(statusItem.devices);
+                          return `
+                            ${statusItem.name}:
+                            <br>
+                            ${sequence}
                             ${index < array.length - 1 ? '<br><br>' : ''}
-                          </div>
-                        `;
-                      }).join('')}
-                  </td>
-                  <td style="padding: 3px; border: 1px solid #ddd; text-align: center;">
-                    ${device.status
-                      .sort((a, b) => a.name.localeCompare(b.name))
-                      .map((statusItem, index, array) => {
-                        const sequence = getSequences(statusItem.devices);
-                        return `
-                          ${statusItem.name}:
-                          <br>
-                          ${sequence}
-                          ${index < array.length - 1 ? '<br><br>' : ''}
-                        `;
-                      }).join('')}
-                  </td>
-                </tr>
-              `;
-            }).join('')}
-          </tbody>
-        </table>
+                          `;
+                        }).join('')}
+                    </td>
+                  </tr>
+                `;
+              }).join('')}
+            </tbody>
+          </table>
+        `).join('')}
       `;
+      devicesSection.innerHTML = devicesHTML;
     }
 
     // Seção de informações complementares
@@ -811,20 +855,13 @@ export const generateServiceOrderPDF = async (
     complementarySection.className = 'section-container complementary-section';
     complementarySection.style.marginTop = '20px';
 
-    // Título das informações complementares
-    const complementaryTitle = document.createElement('div');
-    complementaryTitle.style.backgroundColor = '#1a75ff';
-    complementaryTitle.style.color = 'white';
-    complementaryTitle.style.padding = '5px 10px';
-    complementaryTitle.style.marginBottom = '20px';
-    complementaryTitle.innerHTML = 'Informações Complementares';
-    complementarySection.appendChild(complementaryTitle);
+
 
     // Observações
     const observationsContainer = document.createElement('div');
     observationsContainer.style.marginBottom = '20px';
     observationsContainer.innerHTML = `
-      <div style="margin-bottom: 10px;"><strong>Observações:</strong></div>
+      <div style="background-color: #1a73e8; color: white; padding: 3px 10px; margin: 10px 0; font-size: 13px; text-align: left;"><span style="transform: translateY(-6px); display: inline-block;">Observações</span></div>
       <div style="min-height: 80px; border: 1px solid #ddd; padding: 10px; margin-bottom: 20px;">
         ${serviceData.observations || ''}
       </div>
@@ -1047,14 +1084,14 @@ export const generateServiceOrderPDF = async (
         pestCountSection.className = 'section-container';
         pestCountSection.style.marginTop = '20px';
       
-        // Título da seção
-        const pestCountTitle = document.createElement('div');
-        pestCountTitle.style.backgroundColor = '#1a73e8';
-        pestCountTitle.style.color = 'white';
-        pestCountTitle.style.padding = '5px 10px';
-        pestCountTitle.style.marginBottom = '10px';
-        pestCountTitle.innerHTML = 'Contagem de Pragas por Dispositivo';
-        pestCountSection.appendChild(pestCountTitle);
+        // Título removido: usando título dentro do thead da tabela conforme solicitado
+        
+        // Inserir quebra de página antes da tabela se existir seção de dispositivos (pattern igual às tabelas de monitoramento)
+        if (devicesSection) {
+          const pageBreak = document.createElement('div');
+          pageBreak.className = 'html2pdf__page-break';
+          pestCountSection.appendChild(pageBreak);
+        }
         
         // Tabela de contagem de pragas
         const pestCountTable = document.createElement('table');
@@ -1064,15 +1101,19 @@ export const generateServiceOrderPDF = async (
         pestCountTable.style.marginBottom = '10px';
         
         // Cabeçalho da tabela
-        let tableHeader = '<thead><tr style="background-color: #1a73e8; color: white;">';
-        tableHeader += '<th style="padding: 3px; text-align: center; border: 1px solid #ddd;">Tipo de Dispositivo</th>';
-        tableHeader += '<th style="padding: 3px; text-align: center; border: 1px solid #ddd;">Número Dispositivo</th>';
-        tableHeader += '<th style="padding: 3px; text-align: center; border: 1px solid #ddd;">Tipo de Praga</th>';
-        tableHeader += '<th style="padding: 3px; text-align: center; border: 1px solid #ddd;">Quantidade</th>';
+        let tableHeader = '<thead style="display: table-header-group; page-break-after: avoid; break-after: avoid; page-break-inside: avoid;">';
+        tableHeader += '<tr style="background-color: #1a73e8; color: white;">';
+        tableHeader += '<th colspan="4" style="padding: 3px 8px; text-align: left; border: 1px solid #ddd; vertical-align: middle; line-height: 1.3;"><span style="transform: translateY(-6px); display: inline-block;">Contagem de Pragas por Dispositivo</span></th>';
+        tableHeader += '</tr>';
+        tableHeader += '<tr style="background-color: #1a73e8; color: white;">';
+        tableHeader += '<th style="padding: 3px; text-align: center; border: 1px solid #ddd; vertical-align: middle; line-height: 1.3;"><span style="transform: translateY(-6px); display: inline-block;">Tipo de Dispositivo</span></th>';
+        tableHeader += '<th style="padding: 3px; text-align: center; border: 1px solid #ddd; vertical-align: middle; line-height: 1.3;"><span style="transform: translateY(-6px); display: inline-block;">Número Dispositivo</span></th>';
+        tableHeader += '<th style="padding: 3px; text-align: center; border: 1px solid #ddd; vertical-align: middle; line-height: 1.3;"><span style="transform: translateY(-6px); display: inline-block;">Tipo de Praga</span></th>';
+        tableHeader += '<th style="padding: 3px; text-align: center; border: 1px solid #ddd; vertical-align: middle; line-height: 1.3;"><span style="transform: translateY(-6px); display: inline-block;">Quantidade</span></th>';
         tableHeader += '</tr></thead>';
         
         // Corpo da tabela
-        let tableBody = '<tbody>';
+        let tableBody = '<tbody style="page-break-before: avoid; break-before: avoid;">';
         
         // Processar diretamente os dados de contagem de pragas sem agrupamento
         serviceData.pestCounts.forEach(device => {
@@ -1082,7 +1123,7 @@ export const generateServiceOrderPDF = async (
             if (pestsWithCount.length > 0) {
               // Criar uma linha para cada tipo de praga encontrada no dispositivo
               pestsWithCount.forEach((pest, index) => {
-                tableBody += '<tr>';
+                tableBody += '<tr style="page-break-inside: avoid; break-inside: avoid;">';
                 
                 // Apenas na primeira linha de cada dispositivo, mostrar o tipo e número
                 if (index === 0) {
@@ -1121,9 +1162,8 @@ export const generateServiceOrderPDF = async (
       `<div class="section-container">
         ${header.outerHTML}
         ${licensesContainer.outerHTML}
-        ${divider.outerHTML}
         ${clientSection.outerHTML}
-      </div>`,
+      </div>`, 
       `<div class="section-container">
         ${serviceSection.outerHTML}
         ${servicesInfoSection.outerHTML}
@@ -1180,6 +1220,7 @@ export const generateServiceOrderPDF = async (
         logging: false,
         windowWidth: 794 // A4 width in pixels at 96 DPI
       },
+      pagebreak: { mode: ['css', 'legacy'], avoid: ['tr', 'td'] },
       jsPDF: {
         unit: 'mm',
         format: 'a4',
@@ -1375,7 +1416,7 @@ export const generateEditableServiceOrderPDF = async (
       x: width - 150,
       y: height - 120,
       size: 12,
-      font: boldFont,
+      font: font,
       color: rgb(0, 0, 0)
     });
     

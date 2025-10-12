@@ -10,14 +10,15 @@ import {
 import { getAnalytics, Analytics, logEvent } from 'firebase/analytics';
 import { getStorage } from 'firebase/storage';
 
+// Carregando configurações do Firebase de variáveis de ambiente
 const firebaseConfig = {
-  apiKey: "AIzaSyDHp6dM173nCUNRnT3W1RjAV2Xl4q6kqJQ",
-  authDomain: "safeprag-33a86.firebaseapp.com",
-  projectId: "safeprag-33a86",
-  storageBucket: "safeprag-33a86.appspot.com",
-  messagingSenderId: "908545363827",
-  appId: "1:908545363827:web:ecb1ddd4e146585baeff06",
-  measurementId: "G-KNCJNHDLSH"
+  apiKey: import.meta.env.VITE_FIREBASE_API_KEY,
+  authDomain: import.meta.env.VITE_FIREBASE_AUTH_DOMAIN,
+  projectId: import.meta.env.VITE_FIREBASE_PROJECT_ID,
+  storageBucket: import.meta.env.VITE_FIREBASE_STORAGE_BUCKET,
+  messagingSenderId: import.meta.env.VITE_FIREBASE_MESSAGING_SENDER_ID,
+  appId: import.meta.env.VITE_FIREBASE_APP_ID,
+  measurementId: import.meta.env.VITE_FIREBASE_MEASUREMENT_ID
 };
 
 // Variáveis para armazenar as instâncias

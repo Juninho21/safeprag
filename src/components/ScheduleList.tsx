@@ -2,7 +2,7 @@ import React, { useState, useMemo, useEffect } from 'react';
 import { format } from 'date-fns';
 import { ptBR } from 'date-fns/locale';
 import { Schedule } from '../types/schedule';
-import { Clock, MapPin, User, Pencil, Trash2, X, Play, AlertCircle, Phone } from 'lucide-react';
+import { Clock, MapPin, User, Pencil, Trash2, X, Play, AlertCircle, Phone, Building2, Mail } from 'lucide-react';
 // import { toast } from 'react-toastify';
 import { createServiceOrder, registerNoService, hasActiveSchedule, hasActiveScheduleAsync } from '../services/ordemServicoService';
 import { getClients } from '../services/clientStorage';
@@ -361,23 +361,52 @@ export const ScheduleList: React.FC<ScheduleListProps> = ({
                     </div>
 
                     <div className="flex items-start space-x-2 mb-2">
-                      <User className="w-4 h-4 text-gray-400 mt-0.5" />
+                      <Building2 className="w-4 h-4 text-blue-500 mt-0.5" />
                       <div className="flex-1">
-                        <span className="text-sm text-gray-600">
-                          {client ? client.name : 'Cliente não encontrado'}
-                        </span>
-                        {client && client.phone && (
-                          <div className="text-sm text-gray-500">
-                            <span className="block">
-                              Tel: {client.phone}
-                            </span>
-                          </div>
+                        {client?.code && (
+                          <span className="block text-xs text-blue-600 mb-0.5">Código: {client.code}</span>
                         )}
+                        <span className="text-sm font-semibold text-gray-900">
+                          {client ? (client.name || schedule.clientName) : (schedule.clientName || 'Cliente não encontrado')}
+                        </span>
                       </div>
                     </div>
 
+                    {client && client.contact && (
+                      <div className="flex items-start space-x-2 mb-2">
+                        <User className="w-4 h-4 text-blue-500 mt-0.5" />
+                        <div className="flex-1">
+                          <span className="text-sm text-gray-500">
+                            Contato: {client.contact}
+                          </span>
+                        </div>
+                      </div>
+                    )}
+
+                    {client && client.phone && (
+                      <div className="flex items-start space-x-2 mb-2">
+                        <Phone className="w-4 h-4 text-blue-500 mt-0.5" />
+                        <div className="flex-1">
+                          <span className="text-sm text-gray-500">
+                            Tel: {client.phone}
+                          </span>
+                        </div>
+                      </div>
+                    )}
+
+                    {client && client.email && (
+                      <div className="flex items-start space-x-2 mb-2">
+                        <Mail className="w-4 h-4 text-blue-500 mt-0.5" />
+                        <div className="flex-1">
+                          <span className="text-sm text-gray-500">
+                            Email: {client.email}
+                          </span>
+                        </div>
+                      </div>
+                    )}
+
                     <div className="flex items-start space-x-2">
-                      <MapPin className="w-4 h-4 text-gray-400 mt-0.5" />
+                      <MapPin className="w-4 h-4 text-blue-500 mt-0.5" />
                       <span className="text-sm text-gray-600">
                         {schedule.client_address || schedule.clientAddress}
                       </span>
@@ -429,25 +458,42 @@ export const ScheduleList: React.FC<ScheduleListProps> = ({
                   <h4 className="text-sm font-semibold text-gray-700 mb-3">Dados do Cliente</h4>
                   <div className="space-y-2">
                     <div className="flex items-center space-x-2">
-                      <User className="w-4 h-4 text-gray-400" />
-                      <span className="text-sm font-medium text-gray-900">
-                        {client ? client.name : 'Cliente não encontrado'}
-                      </span>
+                      <Building2 className="w-4 h-4 text-blue-500" />
+                      <div>
+                        {client?.code && (
+                          <span className="block text-xs text-blue-600">Código: {client.code}</span>
+                        )}
+                        <span className="text-sm font-semibold text-gray-900">
+                          {client ? (client.name || selectedSchedule.clientName) : (selectedSchedule.clientName || 'Cliente não encontrado')}
+                        </span>
+                      </div>
                     </div>
+                    {client && client.contact && (
+                      <div className="flex items-center space-x-2">
+                        <User className="w-4 h-4 text-blue-500" />
+                        <span className="text-sm text-gray-600">Contato: {client.contact}</span>
+                      </div>
+                    )}
                     <div className="flex items-start space-x-2">
-                      <MapPin className="w-4 h-4 text-gray-400 mt-0.5" />
+                      <MapPin className="w-4 h-4 text-blue-500 mt-0.5" />
                       <span className="text-sm text-gray-600">
                         {selectedSchedule.client_address || selectedSchedule.clientAddress}
                       </span>
                     </div>
                     <div className="flex items-center space-x-2">
-                      <Phone className="w-4 h-4 text-gray-400" />
+                      <Phone className="w-4 h-4 text-blue-500" />
                       <span className="text-sm text-gray-600">
                         {client && client.phone ? client.phone : 'Não informado'}
                       </span>
                     </div>
+                    {client && client.email && (
+                      <div className="flex items-center space-x-2">
+                        <Mail className="w-4 h-4 text-blue-500" />
+                        <span className="text-sm text-gray-600">{client.email}</span>
+                      </div>
+                    )}
                     <div className="flex items-center space-x-2">
-                      <Clock className="w-4 h-4 text-gray-400" />
+                      <Clock className="w-4 h-4 text-blue-500" />
                       <span className="text-sm text-gray-600">
                         Horário: {selectedSchedule.startTime} - {selectedSchedule.endTime}
                       </span>

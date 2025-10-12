@@ -20,8 +20,8 @@ export const Modal: React.FC<ModalProps> = ({
     <ReactModal
       isOpen={isOpen}
       onRequestClose={onRequestClose}
-      className={`${className} bg-white rounded-lg shadow-xl max-w-2xl mx-auto mt-20 outline-none`}
-      overlayClassName={`${overlayClassName} fixed inset-0 bg-black bg-opacity-50 flex items-start justify-center`}
+      className={`${className} bg-white shadow-xl outline-none w-full sm:w-auto max-w-md sm:max-w-2xl rounded-lg max-h-[90vh] overflow-y-auto`}
+      overlayClassName={`${overlayClassName} fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center p-4`}
       ariaHideApp={false}
     >
       {children}

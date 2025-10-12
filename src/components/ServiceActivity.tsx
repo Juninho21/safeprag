@@ -202,11 +202,17 @@ const ServiceActivity: React.FC<ServiceActivityProps> = ({
           
           // Carregar contagens de pragas do localStorage
           try {
-            const savedPestCountsStr = localStorage.getItem(STORAGE_KEYS.PEST_COUNTS);
-            if (savedPestCountsStr) {
-              const savedPestCounts = JSON.parse(savedPestCountsStr);
-              setPestCounts(savedPestCounts);
-              console.log('Contagens de pragas carregadas do localStorage:', savedPestCounts);
+            if (!endTime && (!activeOrder.status || activeOrder.status === 'in_progress')) {
+              const savedPestCountsStr = localStorage.getItem(STORAGE_KEYS.PEST_COUNTS);
+              if (savedPestCountsStr) {
+                const savedPestCounts = JSON.parse(savedPestCountsStr);
+                setPestCounts(savedPestCounts);
+                console.log('Contagens de pragas carregadas do localStorage:', savedPestCounts);
+              }
+            } else {
+              // OS já finalizada: iniciar contagens vazias no modal e ignorar localStorage
+              setPestCounts([]);
+              console.log('OS finalizada - contagens de pragas iniciam vazias (localStorage ignorado)');
             }
           } catch (error) {
             console.error('Erro ao carregar contagens de pragas do localStorage:', error);
@@ -402,6 +408,8 @@ const ServiceActivity: React.FC<ServiceActivityProps> = ({
 
         // Limpa as contagens de pragas e reseta as listas dinâmicas
         setPestCounts([]);
+        // Garante que o resumo não reapareça por dados antigos
+        localStorage.removeItem(STORAGE_KEYS.PEST_COUNTS);
         setAvailablePests(initialPests); // Reseta a lista de pragas dinâmicas
         setAvailableServiceTypes(initialServiceTypes); // Reseta a lista de tipos de serviço dinâmicos
 
@@ -462,6 +470,8 @@ const ServiceActivity: React.FC<ServiceActivityProps> = ({
       setPestCounts([]);
       setAvailablePests(initialPests);
       setAvailableServiceTypes(initialServiceTypes);
+      // Garante que o resumo não reapareça por dados antigos
+      localStorage.removeItem(STORAGE_KEYS.PEST_COUNTS);
 
       // Limpa outros estados locais
       setShowNewPestInput(false);
@@ -569,16 +579,19 @@ const ServiceActivity: React.FC<ServiceActivityProps> = ({
     const loadSavedCounts = async () => {
       try {
         const activeOrder = await activityService.getActiveServiceOrder();
-        if (activeOrder) {
+        if (activeOrder && !endTime) {
           const counts = await activityService.loadPestCounts(activeOrder.id);
           setPestCounts(counts);
+        } else {
+          // OS finalizada: garantir que o modal inicie vazio
+          setPestCounts([]);
         }
       } catch (error) {
         console.error('Erro ao carregar contagens salvas:', error);
       }
     };
     loadSavedCounts();
-  }, []);
+  }, [endTime]);
 
   // Função para adicionar nova praga à lista
   const handleAddNewPest = () => {
@@ -960,7 +973,13 @@ const ServiceActivity: React.FC<ServiceActivityProps> = ({
                 Selecionar Dispositivos
               </button>
               <button
-                onClick={() => setShowPestCountingModal(true)}
+                onClick={() => {
+                  if (endTime) {
+                    // Se a OS já foi finalizada, garantir que o modal abra vazio
+                    setPestCounts([]);
+                  }
+                  setShowPestCountingModal(true);
+                }}
                 className="w-full sm:w-auto px-4 py-3 sm:py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-blue-500 font-medium text-center"
               >
                 Contagem de Pragas
@@ -1075,17 +1094,20 @@ const ServiceActivity: React.FC<ServiceActivityProps> = ({
         isOpen={showPestCountingModal}
         onClose={() => setShowPestCountingModal(false)}
         devices={
-          (state.savedDevices || []).filter((device: any) =>
-            !(
-              device.status &&
-              (Array.isArray(device.status)
-                ? device.status.includes('Conforme')
-                : device.status === 'Conforme')
-            )
-          )
+          (state.savedDevices || []).filter((device: any) => {
+            const status = device.status;
+            const statusList = Array.isArray(status) ? status : (status ? [status] : []);
+            // Dispositivos com refil/atrativo substituído ou com "Praga encontrada"
+            const hasEligibleStatus =
+              statusList.includes('Refil substituído') ||
+              statusList.includes('Atrativo biológico substituído') ||
+              statusList.includes('Praga encontrada');
+            // Exclui dispositivos inativos
+            return hasEligibleStatus && !statusList.includes('inativo');
+          })
         }
         onSavePestCounts={handleSavePestCounts}
-        savedPestCounts={pestCounts}
+        savedPestCounts={endTime ? [] : pestCounts}
       />
 
       {/* Modal de Dispositivos */}

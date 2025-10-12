@@ -143,20 +143,33 @@ class StorageServiceImpl implements StorageService {
 
   // Utilitários
   getItems(key: string): any[] {
-    const data = localStorage.getItem(key);
-    return data ? JSON.parse(data) : [];
+    try {
+      const data = localStorage.getItem(key);
+      return data ? JSON.parse(data) : [];
+    } catch (error) {
+      console.error(`Erro ao obter dados da chave ${key}:`, error);
+      return [];
+    }
   }
 
   saveItems(key: string, items: any[]): void {
-    localStorage.setItem(key, JSON.stringify(items));
+    try {
+      localStorage.setItem(key, JSON.stringify(items));
+    } catch (error) {
+      console.error(`Erro ao salvar dados na chave ${key}:`, error);
+    }
   }
 
   clearAll(): void {
-    Object.values(STORAGE_KEYS).forEach(key => {
-      if (typeof key === 'string') {
-        localStorage.removeItem(key);
-      }
-    });
+    try {
+      Object.values(STORAGE_KEYS).forEach(key => {
+        if (typeof key === 'string') {
+          localStorage.removeItem(key);
+        }
+      });
+    } catch (error) {
+      console.error('Erro ao limpar dados do armazenamento:', error);
+    }
   }
 }
 

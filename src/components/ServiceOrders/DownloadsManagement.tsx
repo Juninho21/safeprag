@@ -35,26 +35,39 @@ const DownloadsManagement: React.FC<DownloadsManagementProps> = () => {
   const [loading, setLoading] = useState(false);
 
   useEffect(() => {
-    loadPDFs();
+    const fetchPDFs = async () => {
+      await loadPDFs();
+    };
+    fetchPDFs();
   }, []);
 
-  const loadPDFs = () => {
+  const loadPDFs = async () => {
     setLoading(true);
     try {
-      // Carregar todos os PDFs armazenados
-      const storedPDFs = getAllStoredPDFs();
-      setData(storedPDFs);
-      setFilteredData(storedPDFs);
+      // Carregar todos os PDFs armazenados (função agora é assíncrona)
+      const storedPDFs = await getAllStoredPDFs();
+      // Garantir que sempre seja um array
+      const pdfArray = Array.isArray(storedPDFs) ? storedPDFs : [];
+      setData(pdfArray);
+      setFilteredData(pdfArray);
     } catch (error) {
       console.error('Erro ao carregar PDFs:', error);
       // toast.error('Erro ao carregar PDFs');
       console.error('Erro ao carregar PDFs');
+      // Em caso de erro, inicializar com arrays vazios
+      setData([]);
+      setFilteredData([]);
     } finally {
       setLoading(false);
     }
   };
 
   const handleSearch = () => {
+    if (!Array.isArray(data)) {
+      console.error('Dados não estão em formato de array');
+      return;
+    }
+    
     const filtered = data.filter(item => {
       // Filtrar por número da OS
       if (filters.orderNumber && !item.orderNumber.toLowerCase().includes(filters.orderNumber.toLowerCase())) {
@@ -95,11 +108,18 @@ const DownloadsManagement: React.FC<DownloadsManagementProps> = () => {
       startDate: undefined,
       endDate: undefined
     });
-    setFilteredData(data);
+    // Garantir que data seja um array antes de atribuir
+    setFilteredData(Array.isArray(data) ? data : []);
   };
 
   const handleExport = () => {
     try {
+      // Verificar se filteredData é um array
+      if (!Array.isArray(filteredData)) {
+        console.error('Dados filtrados não estão em formato de array');
+        return;
+      }
+      
       // Criar CSV com os dados filtrados
       const headers = ['Num. O.S.', 'Data de Criação', 'Nome do Cliente', 'Tipo de Serviço'];
       const csvContent = [

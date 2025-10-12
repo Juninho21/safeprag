@@ -1,13 +1,17 @@
 import React, { useState, useEffect } from 'react';
-import { Trash2, Edit2, AlertCircle } from 'lucide-react';
+import { Trash2, Edit2, AlertCircle, AlertTriangle, X } from 'lucide-react';
 // import { toast } from 'react-toastify';
 import { productDataService } from '../services/dataService';
+import { Modal } from './Modal';
 import { Product } from '../types/product.types';
 
 export const ProductForm: React.FC = () => {
   const [products, setProducts] = useState<Product[]>([]);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [search, setSearch] = useState('');
+  const [page, setPage] = useState(1);
+  const pageSize = 3;
 
   const [product, setProduct] = useState<Product>({
     id: '',
@@ -22,6 +26,8 @@ export const ProductForm: React.FC = () => {
   });
 
   const [editMode, setEditMode] = useState(false);
+  const [confirmOpen, setConfirmOpen] = useState(false);
+  const [pendingDeleteProduct, setPendingDeleteProduct] = useState<Product | null>(null);
 
   useEffect(() => {
     const loadProducts = async () => {
@@ -101,25 +107,55 @@ export const ProductForm: React.FC = () => {
     setEditMode(true);
   };
 
-  const handleDelete = async (productId: string) => {
-    if (window.confirm('Tem certeza que deseja excluir este produto?')) {
-      setLoading(true);
-      setError(null);
-      try {
-        await productDataService.deleteProduct(productId);
-        const updatedProducts = products.filter(p => p.id !== productId);
-        setProducts(updatedProducts);
-        console.log('Produto excluído com sucesso!');
-      } catch (error) {
-        console.error('Erro ao excluir produto:', error);
-        setError('Erro ao excluir produto. Verifique sua conexão com a internet.');
-      } finally {
-        setLoading(false);
-      }
+  const requestDelete = (p: Product) => {
+    setPendingDeleteProduct(p);
+    setConfirmOpen(true);
+  };
+
+  const handleDelete = async () => {
+    if (!pendingDeleteProduct) return;
+    setLoading(true);
+    setError(null);
+    try {
+      await productDataService.deleteProduct(pendingDeleteProduct.id);
+      const updatedProducts = products.filter(p => p.id !== pendingDeleteProduct.id);
+      setProducts(updatedProducts);
+      setConfirmOpen(false);
+      setPendingDeleteProduct(null);
+      console.log('Produto excluído com sucesso!');
+    } catch (error) {
+      console.error('Erro ao excluir produto:', error);
+      setError('Erro ao excluir produto. Verifique sua conexão com a internet.');
+      setConfirmOpen(false);
+      setPendingDeleteProduct(null);
+    } finally {
+      setLoading(false);
     }
   };
 
+  const filteredProducts = products.filter((p) => {
+    const q = search.trim().toLowerCase();
+    if (!q) return true;
+    return (
+      (p.name || '').toLowerCase().includes(q) ||
+      (p.activeIngredient || '').toLowerCase().includes(q) ||
+      (p.chemicalGroup || '').toLowerCase().includes(q) ||
+      (p.registration || '').toLowerCase().includes(q) ||
+      (p.batch || '').toLowerCase().includes(q)
+    );
+  });
+
+  const totalPages = Math.max(1, Math.ceil(filteredProducts.length / pageSize));
+  const currentPage = Math.min(page, totalPages);
+  const paginatedProducts = filteredProducts.slice((currentPage - 1) * pageSize, currentPage * pageSize);
+
+  const goToPage = (p: number) => {
+    const clamped = Math.min(Math.max(1, p), totalPages);
+    setPage(clamped);
+  };
+
   return (
+    <>
     <div className="max-w-6xl mx-auto p-4">
       <div className="grid grid-cols-1 md:grid-cols-2 gap-8">
         {/* Formulário */}
@@ -289,8 +325,17 @@ export const ProductForm: React.FC = () => {
         {/* Lista de Produtos */}
         <div>
           <h2 className="text-2xl font-bold mb-6">Produtos Cadastrados</h2>
+          <div className="mb-4">
+            <input
+              type="text"
+              value={search}
+              onChange={(e) => { setSearch(e.target.value); setPage(1); }}
+              placeholder="Buscar por nome, princípio ativo, grupo químico, registro, lote..."
+              className="w-full px-3 py-2 rounded-md border border-gray-300 shadow-sm focus:outline-none focus:ring-1 focus:ring-blue-500"
+            />
+          </div>
           <div className="space-y-4">
-            {products.map((p) => (
+            {paginatedProducts.map((p) => (
               <div
                 key={p.id}
                 className="bg-white p-4 rounded-lg shadow border border-gray-200 hover:shadow-md transition-shadow"
@@ -306,7 +351,7 @@ export const ProductForm: React.FC = () => {
                       <Edit2 className="w-5 h-5" />
                     </button>
                     <button
-                      onClick={() => handleDelete(p.id)}
+                      onClick={() => requestDelete(p)}
                       className="text-red-600 hover:text-red-800"
                       title="Excluir"
                     >
@@ -324,12 +369,47 @@ export const ProductForm: React.FC = () => {
                 </div>
               </div>
             ))}
-            {products.length === 0 && (
+            {filteredProducts.length === 0 && (
               <p className="text-gray-500 text-center py-4">Nenhum produto cadastrado ainda.</p>
             )}
           </div>
+          {filteredProducts.length > 0 && (
+            <div className="mt-4 flex items-center justify-between">
+              <span className="text-sm text-gray-600">Página {currentPage} de {totalPages}</span>
+              <div className="flex gap-2">
+                <button onClick={() => goToPage(1)} disabled={currentPage === 1} className={`px-3 py-1 rounded border ${currentPage === 1 ? 'text-gray-400 border-gray-200' : 'hover:bg-gray-50 border-gray-300'}`}>«</button>
+                <button onClick={() => goToPage(currentPage - 1)} disabled={currentPage === 1} className={`px-3 py-1 rounded border ${currentPage === 1 ? 'text-gray-400 border-gray-200' : 'hover:bg-gray-50 border-gray-300'}`}>Anterior</button>
+                <button onClick={() => goToPage(currentPage + 1)} disabled={currentPage === totalPages} className={`px-3 py-1 rounded border ${currentPage === totalPages ? 'text-gray-400 border-gray-200' : 'hover:bg-gray-50 border-gray-300'}`}>Próxima</button>
+                <button onClick={() => goToPage(totalPages)} disabled={currentPage === totalPages} className={`px-3 py-1 rounded border ${currentPage === totalPages ? 'text-gray-400 border-gray-200' : 'hover:bg-gray-50 border-gray-300'}`}>»</button>
+              </div>
+            </div>
+          )}
         </div>
       </div>
     </div>
+
+    {/* Modal de confirmação de exclusão de produto */}
+    <Modal isOpen={confirmOpen} onRequestClose={() => { setConfirmOpen(false); setPendingDeleteProduct(null); }}>
+      <div className="p-6">
+        <div className="flex items-start gap-3 mb-4">
+          <AlertTriangle className="w-6 h-6 text-red-600 mt-0.5" />
+          <div>
+            <h3 className="text-lg font-semibold text-gray-900">Confirmar exclusão</h3>
+            <p className="text-sm text-gray-600 mt-1">Esta ação não pode ser desfeita. Deseja realmente excluir este produto?</p>
+            {pendingDeleteProduct && (
+              <p className="text-sm text-gray-800 mt-2">{pendingDeleteProduct.name} {pendingDeleteProduct.registration ? `(Registro: ${pendingDeleteProduct.registration})` : ''}</p>
+            )}
+          </div>
+          <button onClick={() => { setConfirmOpen(false); setPendingDeleteProduct(null); }} className="ml-auto text-gray-400 hover:text-gray-600" aria-label="Fechar">
+            <X className="w-5 h-5" />
+          </button>
+        </div>
+        <div className="flex justify-end gap-3">
+          <button onClick={() => { setConfirmOpen(false); setPendingDeleteProduct(null); }} className="px-4 py-2 rounded-md border border-gray-300 text-gray-700 hover:bg-gray-50">Cancelar</button>
+          <button onClick={handleDelete} className="px-4 py-2 rounded-md bg-red-600 text-white hover:bg-red-700">Excluir</button>
+        </div>
+      </div>
+    </Modal>
+  </>
   );
 };
