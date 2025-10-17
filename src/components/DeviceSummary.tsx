@@ -87,7 +87,7 @@ export const DeviceSummary: React.FC<DeviceSummaryProps> = ({ devices, selectedP
       {Object.entries(devicesByType).map(([type, typeDevices]) => {
         // Agrupa por status para este tipo específico
         const devicesByStatus = typeDevices.reduce((acc, device) => {
-          const status = device.status || 'Não definido';
+          const status = device.status || 'Conforme';
           if (!acc[status]) {
             acc[status] = [];
           }
@@ -95,10 +95,8 @@ export const DeviceSummary: React.FC<DeviceSummaryProps> = ({ devices, selectedP
           return acc;
         }, {} as Record<string, Device[]>);
 
-        // Ordena os status para que "Não definido" fique por último
+        // Ordena os status alfabeticamente (sem tratamento especial para "Não definido")
         const sortedStatuses = Object.entries(devicesByStatus).sort(([statusA], [statusB]) => {
-          if (statusA === 'Não definido') return 1;
-          if (statusB === 'Não definido') return -1;
           return statusA.localeCompare(statusB);
         });
 

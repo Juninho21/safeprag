@@ -1,6 +1,6 @@
 {
-  "appId": "com.devicemanager.app",
-  "appName": "DeviceManager",
+  "appId": "com.safeprag.app",
+  "appName": "Sulpest",
   "webDir": "dist",
   "bundledWebRuntime": false,
   "plugins": {

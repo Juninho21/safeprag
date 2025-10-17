@@ -8,9 +8,11 @@
     "build": "tsc && vite build",
     "lint": "eslint . --report-unused-disable-directives --max-warnings 0",
     "preview": "vite preview",
-    "backup": "node --loader ts-node/esm src/scripts/backup.ts"
+    "backup": "node --loader ts-node/esm src/scripts/backup.ts",
+    "admin:init": "node server/firebase-admin-init.mjs"
   },
   "dependencies": {
+    "@belongnet/capacitor-google-auth": "^6.0.0-rc.0",
     "@capacitor/android": "^6.2.0",
     "@capacitor/core": "^6.2.0",
     "@capacitor/device": "^6.0.0",

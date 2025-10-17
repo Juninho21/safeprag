@@ -97,7 +97,7 @@ export const AdminPage = () => {
     return emptyCompanyData;
   });
   const [userData, setUserData] = useState<UserData>(() => {
-    const saved = localStorage.getItem('userData');
+    const saved = localStorage.getItem(STORAGE_KEYS.USER_DATA) || localStorage.getItem('userData');
     return saved ? JSON.parse(saved) : { 
       name: '', 
       phone: '', 
@@ -167,7 +167,7 @@ export const AdminPage = () => {
   useEffect(() => {
     // Carregar dados salvos quando a aba for aberta
     if (activeTab === 'userData') {
-      const savedData = localStorage.getItem('userData');
+      const savedData = localStorage.getItem(STORAGE_KEYS.USER_DATA) || localStorage.getItem('userData');
       if (savedData) {
         const parsedData = JSON.parse(savedData);
         setUserData(prev => ({
@@ -182,7 +182,7 @@ export const AdminPage = () => {
   useEffect(() => {
     if (activeTab === 'usuarios') {
       // Carregar dados do localStorage para preencher o formulário de assinaturas
-      const savedData = localStorage.getItem('userData');
+      const savedData = localStorage.getItem(STORAGE_KEYS.USER_DATA) || localStorage.getItem('userData');
       if (savedData) {
         const parsedData = JSON.parse(savedData);
         setUserData(prev => ({
@@ -352,6 +352,8 @@ export const AdminPage = () => {
         ...userData,
         signature: userData.signature
       };
+      // Persistir em ambas as chaves para compatibilidade
+      localStorage.setItem(STORAGE_KEYS.USER_DATA, JSON.stringify(updatedUserData));
       localStorage.setItem('userData', JSON.stringify(updatedUserData));
       // toast.success('Dados do Controlador salvos com sucesso!');
       console.log('Dados do Controlador salvos com sucesso!');
@@ -373,6 +375,8 @@ export const AdminPage = () => {
         tecnicoEmail: userData.tecnicoEmail,
         tecnicoSignature: userData.tecnicoSignature
       };
+      // Persistir em ambas as chaves para compatibilidade
+      localStorage.setItem(STORAGE_KEYS.USER_DATA, JSON.stringify(updatedUserData));
       localStorage.setItem('userData', JSON.stringify(updatedUserData));
       // toast.success('Dados do Responsável Técnico salvos com sucesso!');
       console.log('Dados do Responsável Técnico salvos com sucesso!');

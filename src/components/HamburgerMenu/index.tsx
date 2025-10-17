@@ -1,8 +1,7 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState } from 'react';
 import { NavLink, useNavigate } from 'react-router-dom';
-import { Menu, X, Home, Activity, Settings } from 'lucide-react';
-// Removido: import do supabase
-import { handleLogout as authLogout } from '../../services/authService';
+import { Menu, Home, Activity, Settings } from 'lucide-react';
+import { useAuth } from '../../contexts/AuthContext';
 
 interface NavItem {
   path: string;
@@ -31,24 +30,15 @@ const navigationItems: NavItem[] = [
 export function HamburgerMenu() {
   const navigate = useNavigate();
   const [isOpen, setIsOpen] = useState(false);
-  const [user, setUser] = useState<any>(null);
+  const { user, logout } = useAuth();
 
-  useEffect(() => {
-    // Modo offline - simular usuário logado
-    const offlineUser = {
-      id: 'offline-user',
-      email: 'usuario@offline.local',
-      user_metadata: { name: 'Usuário Offline' }
-    };
-    setUser(offlineUser as any);
-  }, []);
+  const displayName = (user?.displayName || user?.email || 'Usuário') as string;
+  const displayInitial = displayName?.charAt(0)?.toUpperCase();
 
   const handleLogout = async () => {
-    // Usar a função de logout do serviço de autenticação
-    await authLogout();
+    await logout();
     setIsOpen(false);
-    // Logout desabilitado - não redireciona para login
-    // navigate('/login');
+    navigate('/login');
   };
 
   const toggleMenu = () => {
@@ -59,18 +49,16 @@ export function HamburgerMenu() {
 
   return (
     <>
-      {/* Botão do menu hamburger */}
-      <button
-        onClick={toggleMenu}
-        className="fixed top-4 left-4 z-50 bg-white rounded-lg shadow-md p-2 flex items-center justify-center"
-        aria-label="Menu"
-      >
-        {isOpen ? (
-          <X className="w-6 h-6 text-gray-600" />
-        ) : (
+      {/* Botão do menu hamburger (oculto quando aberto) */}
+      {!isOpen && (
+        <button
+          onClick={toggleMenu}
+          className="fixed top-4 left-4 z-50 bg-white rounded-lg shadow-md p-2 flex items-center justify-center"
+          aria-label="Abrir menu"
+        >
           <Menu className="w-6 h-6 text-gray-600" />
-        )}
-      </button>
+        </button>
+      )}
 
       {/* Overlay para fechar o menu ao clicar fora */}
       {isOpen && (
@@ -84,6 +72,23 @@ export function HamburgerMenu() {
       <div 
         className={`fixed top-0 left-0 h-full w-64 bg-white shadow-lg z-40 transform transition-transform duration-300 ease-in-out ${isOpen ? 'translate-x-0' : '-translate-x-full'}`}
       >
+        {/* Cabeçalho com usuário e ação de sair */}
+        <div className="p-4 border-b border-gray-200">
+          <div className="flex items-center gap-3">
+            <div className="w-10 h-10 rounded-full bg-blue-100 flex items-center justify-center text-blue-600 font-semibold">
+              {displayInitial}
+            </div>
+            <div className="flex-1">
+              <div className="text-sm font-medium text-gray-800">{displayName}</div>
+              <button
+                onClick={handleLogout}
+                className="text-xs text-red-600 hover:text-red-700"
+              >
+                Sair
+              </button>
+            </div>
+          </div>
+        </div>
         <nav className="p-4">
           <ul className="space-y-2">
             {navigationItems.map((item) => (
@@ -100,14 +105,6 @@ export function HamburgerMenu() {
                 </NavLink>
               </li>
             ))}
-            <li>
-              <button
-                onClick={handleLogout}
-                className="flex items-center gap-3 p-2 rounded-lg transition-colors text-gray-600 hover:bg-gray-100 w-full text-left"
-              >
-                <span>Sair</span>
-              </button>
-            </li>
           </ul>
         </nav>
 

@@ -484,10 +484,11 @@ export const generateServiceOrderPDF = async (
       table {
         margin: 0;
         padding: 0;
-        page-break-inside: avoid;
+        /* permitir que a tabela quebre entre páginas */
+        page-break-inside: auto;
       }
       /* Evitar cortes dentro de cada linha da tabela, permitindo que a própria tabela quebre entre páginas e repetindo cabeçalho */
-      thead { display: table-header-group; page-break-after: avoid; break-after: avoid; }
+      thead { display: table-header-group !important; page-break-after: avoid; break-after: avoid; }
       tbody { display: table-row-group; }
       tfoot { display: table-footer-group; }
       table, thead, tbody, tfoot { 
@@ -505,6 +506,16 @@ export const generateServiceOrderPDF = async (
       tbody tr:first-child { 
         page-break-before: avoid; 
         break-before: avoid; 
+      }
+      /* cabeçalho duplicado inserido via JS quando houver quebra de página */
+      .thead-duplicate-row th {
+        background-color: #1a73e8;
+        color: #fff;
+        border: 1px solid #ddd;
+        padding: 3px;
+        text-align: center;
+        vertical-align: middle;
+        line-height: 1.3;
       }
     `;
     document.head.appendChild(style);
@@ -769,8 +780,7 @@ export const generateServiceOrderPDF = async (
 
       const devicesHTML = `
         ${Object.entries(groupedDevices).map(([type, items], idx) => `
-           ${idx > 0 ? '<div class="html2pdf__page-break"></div>' : ''}
-           <table class="devices-table" style="width: 100%; border-collapse: collapse; font-size: 10px; margin-bottom: 6px;">
+           <table class="devices-table" style="width: 100%; border-collapse: collapse; font-size: 10px; margin-bottom: 6px; page-break-inside: avoid; break-inside: avoid;">
             <thead style="display: table-header-group; page-break-after: avoid; break-after: avoid; page-break-inside: avoid;">
               <tr style="background-color: #1a73e8; color: white;">
                 <th colspan="4" style="padding: 3px 8px; text-align: left; border: 1px solid #ddd; vertical-align: middle; line-height: 1.3;">
@@ -860,6 +870,11 @@ export const generateServiceOrderPDF = async (
     // Observações
     const observationsContainer = document.createElement('div');
     observationsContainer.style.marginBottom = '20px';
+    // Evitar quebra de página dentro da seção de observações
+    observationsContainer.style.pageBreakInside = 'avoid';
+    (observationsContainer.style as any).breakInside = 'avoid';
+    observationsContainer.style.pageBreakBefore = 'auto';
+    (observationsContainer.style as any).breakBefore = 'auto';
     observationsContainer.innerHTML = `
       <div style="background-color: #1a73e8; color: white; padding: 3px 10px; margin: 10px 0; font-size: 13px; text-align: left;"><span style="transform: translateY(-6px); display: inline-block;">Observações</span></div>
       <div style="min-height: 80px; border: 1px solid #ddd; padding: 10px; margin-bottom: 20px;">
@@ -880,6 +895,11 @@ export const generateServiceOrderPDF = async (
     signaturesSection.style.marginTop = '10px';
     signaturesSection.style.marginBottom = '20px';
     signaturesSection.style.padding = '0 20px';
+    // Evitar quebra de página dentro da seção de assinaturas
+    signaturesSection.style.pageBreakInside = 'avoid';
+    (signaturesSection.style as any).breakInside = 'avoid';
+    signaturesSection.style.pageBreakBefore = 'auto';
+    (signaturesSection.style as any).breakBefore = 'auto';
 
     const signatureStyle = `
       padding-top: 5px;
@@ -1086,67 +1106,89 @@ export const generateServiceOrderPDF = async (
       
         // Título removido: usando título dentro do thead da tabela conforme solicitado
         
-        // Inserir quebra de página antes da tabela se existir seção de dispositivos (pattern igual às tabelas de monitoramento)
-        if (devicesSection) {
-          const pageBreak = document.createElement('div');
-          pageBreak.className = 'html2pdf__page-break';
-          pestCountSection.appendChild(pageBreak);
-        }
+        // Não inserir quebra de página automática antes da tabela; confiar nas regras de 'avoid' para melhor aproveitamento de página
+        // (removido page-break forçado)
         
-        // Tabela de contagem de pragas
-        const pestCountTable = document.createElement('table');
-        pestCountTable.style.width = '100%';
-        pestCountTable.style.borderCollapse = 'collapse';
-        pestCountTable.style.fontSize = '10px';
-        pestCountTable.style.marginBottom = '10px';
+        // CSS para evitar quebra dentro de linhas e manter visual consistente
+        const styleEl = document.createElement('style');
+        styleEl.textContent = `
+          .pest-count-table tr, .pest-count-table td { page-break-inside: avoid; break-inside: avoid; }
+          .pest-count-table thead { background-color: #1a73e8; color: white; }
+          .pest-count-table { width: 100%; border-collapse: collapse; font-size: 10px; margin-bottom: 10px; }
+          .pest-count-table th, .pest-count-table td { padding: 3px; text-align: center; border: 1px solid #ddd; vertical-align: middle; line-height: 1.3; }
+        `;
+        pestCountSection.appendChild(styleEl);
         
-        // Cabeçalho da tabela
-        let tableHeader = '<thead style="display: table-header-group; page-break-after: avoid; break-after: avoid; page-break-inside: avoid;">';
-        tableHeader += '<tr style="background-color: #1a73e8; color: white;">';
-        tableHeader += '<th colspan="4" style="padding: 3px 8px; text-align: left; border: 1px solid #ddd; vertical-align: middle; line-height: 1.3;"><span style="transform: translateY(-6px); display: inline-block;">Contagem de Pragas por Dispositivo</span></th>';
-        tableHeader += '</tr>';
-        tableHeader += '<tr style="background-color: #1a73e8; color: white;">';
-        tableHeader += '<th style="padding: 3px; text-align: center; border: 1px solid #ddd; vertical-align: middle; line-height: 1.3;"><span style="transform: translateY(-6px); display: inline-block;">Tipo de Dispositivo</span></th>';
-        tableHeader += '<th style="padding: 3px; text-align: center; border: 1px solid #ddd; vertical-align: middle; line-height: 1.3;"><span style="transform: translateY(-6px); display: inline-block;">Número Dispositivo</span></th>';
-        tableHeader += '<th style="padding: 3px; text-align: center; border: 1px solid #ddd; vertical-align: middle; line-height: 1.3;"><span style="transform: translateY(-6px); display: inline-block;">Tipo de Praga</span></th>';
-        tableHeader += '<th style="padding: 3px; text-align: center; border: 1px solid #ddd; vertical-align: middle; line-height: 1.3;"><span style="transform: translateY(-6px); display: inline-block;">Quantidade</span></th>';
-        tableHeader += '</tr></thead>';
+        // Função que cria uma nova tabela com cabeçalho repetido
+        const createPestCountTable = () => {
+          const tbl = document.createElement('table');
+          tbl.className = 'pest-count-table';
+          tbl.innerHTML = '<thead style="display: table-header-group; page-break-after: avoid; break-after: avoid; page-break-inside: avoid;">' +
+            '<tr style="background-color: #1a73e8; color: white;">' +
+            '<th colspan="4" style="padding: 3px 8px; text-align: left; border: 1px solid #ddd; vertical-align: middle; line-height: 1.3;"><span style="transform: translateY(-6px); display: inline-block;">Contagem de Pragas por Dispositivo</span></th>' +
+            '</tr>' +
+            '<tr style="background-color: #1a73e8; color: white;">' +
+            '<th style="padding: 3px; text-align: center; border: 1px solid #ddd; vertical-align: middle; line-height: 1.3;">Tipo de Dispositivo</th>' +
+            '<th style="padding: 3px; text-align: center; border: 1px solid #ddd; vertical-align: middle; line-height: 1.3;">Número Dispositivo</th>' +
+            '<th style="padding: 3px; text-align: center; border: 1px solid #ddd; vertical-align: middle; line-height: 1.3;">Tipo de Praga</th>' +
+            '<th style="padding: 3px; text-align: center; border: 1px solid #ddd; vertical-align: middle; line-height: 1.3;">Quantidade</th>' +
+            '</tr></thead><tbody></tbody>';
+          return tbl;
+        };
         
-        // Corpo da tabela
-        let tableBody = '<tbody style="page-break-before: avoid; break-before: avoid;">';
+        // Heurística para quebrar entre blocos de dispositivos evitando cortar linhas
+        const estimatedRowHeight = 12; // px aproximado por linha
+        const headerHeight = 28; // px aproximado do cabeçalho
+        const pageHeightPx = 1122; // A4 @96dpi (aprox.)
+        const topBottomMargins = 120; // margem/áreas não úteis aproximadas
+        const usablePageHeight = pageHeightPx - topBottomMargins;
+        let usedHeightOnPage = 0;
         
-        // Processar diretamente os dados de contagem de pragas sem agrupamento
+        let currentTable = createPestCountTable();
+        let currentTbody = currentTable.querySelector('tbody')!;
+        
         serviceData.pestCounts.forEach(device => {
-          if (device.pests && device.pests.length > 0) {
-            const pestsWithCount = device.pests.filter(pest => pest.count > 0);
-            
-            if (pestsWithCount.length > 0) {
-              // Criar uma linha para cada tipo de praga encontrada no dispositivo
-              pestsWithCount.forEach((pest, index) => {
-                tableBody += '<tr style="page-break-inside: avoid; break-inside: avoid;">';
-                
-                // Apenas na primeira linha de cada dispositivo, mostrar o tipo e número
-                if (index === 0) {
-                  tableBody += `<td style="padding: 3px; border: 1px solid #ddd; text-align: center;" rowspan="${pestsWithCount.length}">${device.deviceType || 'Armadilha'}</td>`;
-                  tableBody += `<td style="padding: 3px; border: 1px solid #ddd; text-align: center;" rowspan="${pestsWithCount.length}">${device.deviceNumber}</td>`;
-                }
-                
-                // Mostrar o nome da praga e sua quantidade em colunas separadas
-                tableBody += `<td style="padding: 3px; border: 1px solid #ddd; text-align: center;">${pest.name}</td>`;
-                tableBody += `<td style="padding: 3px; border: 1px solid #ddd; text-align: center;">${pest.count}</td>`;
-                
-                tableBody += '</tr>';
-              });
+          if (!device.pests || device.pests.length === 0) return;
+          const pestsWithCount = device.pests.filter(pest => pest.count > 0);
+          if (pestsWithCount.length === 0) return;
+          
+          const deviceBlockHeight = headerHeight + (estimatedRowHeight * pestsWithCount.length);
+          
+          if (usedHeightOnPage > 0 && (usedHeightOnPage + deviceBlockHeight) > usablePageHeight) {
+            // fecha tabela atual e insere quebra de página alinhada
+            if (currentTbody.children.length > 0) {
+              pestCountSection.appendChild(currentTable);
             }
+            const brk = document.createElement('div');
+            brk.className = 'html2pdf__page-break';
+            pestCountSection.appendChild(brk);
+            currentTable = createPestCountTable();
+            currentTbody = currentTable.querySelector('tbody')!;
+            usedHeightOnPage = 0;
           }
+          
+          pestsWithCount.forEach((pest, index) => {
+            const tr = document.createElement('tr');
+            let rowHtml = '';
+            if (index === 0) {
+              rowHtml += `<td rowspan="${pestsWithCount.length}">${device.deviceType || 'Armadilha'}</td>`;
+              rowHtml += `<td rowspan="${pestsWithCount.length}">${device.deviceNumber}</td>`;
+            }
+            rowHtml += `<td>${pest.name}</td>`;
+            rowHtml += `<td>${pest.count}</td>`;
+            tr.innerHTML = rowHtml;
+            currentTbody.appendChild(tr);
+          });
+          
+          usedHeightOnPage += deviceBlockHeight;
         });
         
-        tableBody += '</tbody>';
-        pestCountTable.innerHTML = tableHeader + tableBody;
-        pestCountSection.appendChild(pestCountTable);
+        if (currentTbody.children.length > 0) {
+          pestCountSection.appendChild(currentTable);
+        }
         
-        // Log para debug da tabela de contagem de pragas
-        console.log('Tabela de contagem de pragas gerada com sucesso:', pestCountTable.innerHTML);
+        // Log para debug das tabelas geradas
+        console.log('Tabelas de contagem de pragas geradas (paginadas):', pestCountSection.innerHTML);
         console.log('Dados de contagem de pragas processados:', serviceData.pestCounts);
       }
     }
@@ -1211,7 +1253,7 @@ export const generateServiceOrderPDF = async (
 
     // Opções do PDF
     const pdfOptions = {
-      margin: [10, 10, 10, 10],
+      margin: [6, 8, 8, 6],
       filename: `ordem-servico-${serviceData.orderNumber}.pdf`,
       image: { type: 'jpeg', quality: 0.98 },
       html2canvas: {
@@ -1220,7 +1262,8 @@ export const generateServiceOrderPDF = async (
         logging: false,
         windowWidth: 794 // A4 width in pixels at 96 DPI
       },
-      pagebreak: { mode: ['css', 'legacy'], avoid: ['tr', 'td'] },
+      // Respeita apenas as regras CSS de quebra para permitir repetição do thead
+      pagebreak: { mode: ['css', 'legacy'], avoid: ['tr', 'td', '.devices-table', '.pest-count-table'] },
       jsPDF: {
         unit: 'mm',
         format: 'a4',

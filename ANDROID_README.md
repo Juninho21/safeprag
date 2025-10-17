@@ -90,6 +90,7 @@ cd android
 - `@capacitor/device` - Informações do dispositivo
 - `@capacitor/network` - Status da rede
 - `@capacitor/toast` - Notificações toast
+ - `@belongnet/capacitor-google-auth` - Login nativo com Google (Android)
 
 ## Permissões de Arquivo
 
@@ -225,7 +226,44 @@ adb logcat | grep "Permission"
 4. **Implementar funcionalidades nativas específicas**
 5. **Otimizar para diferentes tamanhos de tela**
 
+## Login com Google (Android)
+
+Para que o login pelo Google aconteça dentro do próprio aplicativo (sem abrir o navegador), usamos o plugin de autenticação nativo.
+
+### 1. Pré-requisitos no Google Cloud / Firebase
+- Ative o provedor Google em `Firebase > Authentication > Sign-in method`.
+- No Google Cloud Console, crie um `OAuth 2.0 Client ID` do tipo `Web client` (vamos usar este valor no Android).
+- Configure a tela de consentimento OAuth.
+
+### 2. Variáveis de ambiente
+Adicione ao arquivo `.env` o Client ID Web:
+```
+VITE_GOOGLE_WEB_CLIENT_ID="xxxxxxxxxxxx-xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx.apps.googleusercontent.com"
+```
+
+### 3. Configuração do Capacitor
+O `capacitor.config.ts` já está preparado para ler `VITE_GOOGLE_WEB_CLIENT_ID` e repassar ao plugin:
+```
+plugins: {
+  GoogleAuth: {
+    scopes: ['profile', 'email'],
+    serverClientId: process.env.VITE_GOOGLE_WEB_CLIENT_ID,
+  }
+}
+```
+
+### 4. Sincronizar e buildar
+```
+npm run build
+npx cap sync android
+cd android && gradlew.bat assembleDebug
+```
+
+### Observações
+- Se o `idToken` não vier no Android, verifique se o `serverClientId` corresponde ao Client ID do tipo `Web client`.
+- Após alterar o `.env`, repita o `npx cap sync android` para atualizar recursos nativos.
+
 ## Contato
 
 Para dúvidas sobre o desenvolvimento Android, consulte a documentação do Capacitor:
-https://capacitorjs.com/docs/android 
+https://capacitorjs.com/docs/android

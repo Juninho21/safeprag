@@ -3,7 +3,7 @@ import { getCompany } from '../services/companyService';
 
 interface LogoProps {
   className?: string;
-  size?: 'sm' | 'md' | 'lg' | 'xl';
+  size?: 'sm' | 'md' | 'lg' | 'xl' | '2xl';
   showText?: boolean;
 }
 
@@ -19,6 +19,9 @@ export const Logo: React.FC<LogoProps> = ({
     const companyData = getCompany();
     if (companyData?.logo_url) {
       setLogoUrl(companyData.logo_url);
+    } else {
+      // Fallback para logo padrão na pasta public
+      setLogoUrl('/logo.png');
     }
   }, []);
 
@@ -26,8 +29,9 @@ export const Logo: React.FC<LogoProps> = ({
     sm: 'h-8 w-auto',
     md: 'h-12 w-auto',
     lg: 'h-16 w-auto',
-    xl: 'h-24 w-auto'
-  };
+    xl: 'h-24 w-auto',
+    '2xl': 'h-32 w-auto'
+  } as const;
 
   const handleImageError = (e: React.SyntheticEvent<HTMLImageElement, Event>) => {
     console.error('Erro ao carregar logo:', e);
@@ -36,16 +40,16 @@ export const Logo: React.FC<LogoProps> = ({
     
     // Criar fallback de texto
     const textLogo = document.createElement('h1');
-    textLogo.className = `mx-auto text-2xl font-bold text-blue-600 ${size === 'xl' ? 'text-3xl' : size === 'lg' ? 'text-2xl' : 'text-xl'} mb-4`;
+    textLogo.className = `mx-auto text-2xl font-bold text-blue-600 ${size === '2xl' ? 'text-4xl' : size === 'xl' ? 'text-3xl' : size === 'lg' ? 'text-2xl' : 'text-xl'} mb-4`;
     textLogo.textContent = 'Sulpest';
     target.parentNode?.insertBefore(textLogo, target);
   };
 
-  // Se não há logo do backup, mostrar apenas texto
+  // Se não há logo definido, mostrar apenas texto
   if (!logoUrl) {
     return (
       <div className={`text-center ${className}`}>
-        <h1 className={`mx-auto text-2xl font-bold text-blue-600 ${size === 'xl' ? 'text-3xl' : size === 'lg' ? 'text-2xl' : 'text-xl'} mb-4`}>
+        <h1 className={`mx-auto text-2xl font-bold text-blue-600 ${size === '2xl' ? 'text-4xl' : size === 'xl' ? 'text-3xl' : size === 'lg' ? 'text-2xl' : 'text-xl'} mb-4`}>
           Sulpest
         </h1>
         {showText && (

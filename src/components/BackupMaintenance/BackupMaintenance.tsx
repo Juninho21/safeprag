@@ -3,35 +3,91 @@ import { Database, RotateCw, Trash2, Upload, X } from 'lucide-react';
 // import { toast } from 'react-toastify';
 import { Button } from '../ui/button';
 import { Modal } from '../Modal';
-import { STORAGE_KEYS, backupAllData, restoreBackup } from '../../services/storageKeys';
+import { STORAGE_KEYS, restoreBackup as restoreByKeyMap } from '../../services/storageKeys';
+import { restoreBackup as restoreStructuredBackup, BackupData, createBackup } from '../../services/backupService';
+import { saveBackupForAutoRestore } from '../../services/autoRestore';
+import { saveBackupJson } from '../../services/crossPlatformSave';
 import { cleanupSystemData } from '../../services/ordemServicoService';
 import { saveBackupToSupabase } from '../../services/backupService'; // Import the saveBackupToSupabase function
+import { fileSharingService } from '../../services/fileSharingService';
+import { Capacitor } from '@capacitor/core';
 
 const BackupMaintenance = () => {
   const [showRestoreModal, setShowRestoreModal] = useState(false);
   const [backupData, setBackupData] = useState('');
   const [backupFileName, setBackupFileName] = useState(''); // Store the backup file name
   const fileInputRef = useRef<HTMLInputElement>(null);
+  const [isBackingUp, setIsBackingUp] = useState(false);
 
-  const handleBackup = () => {
+  const handleBackup = async () => {
+    setIsBackingUp(true);
     try {
-      const backup = backupAllData();
-      const backupStr = JSON.stringify(backup);
-      const blob = new Blob([backupStr], { type: 'application/json' });
-      const url = URL.createObjectURL(blob);
-      const a = document.createElement('a');
-      a.href = url;
-      a.download = `backup_${new Date().toISOString().split('T')[0]}.json`;
-      document.body.appendChild(a);
-      a.click();
-      document.body.removeChild(a);
-      URL.revokeObjectURL(url);
-      // toast.success('Backup realizado com sucesso!');
-      console.log('Backup realizado com sucesso!');
+      // Criar backup estruturado compatível com Android/iOS e web
+      const backup = createBackup();
+      const fileName = `backup_${new Date().toISOString().split('T')[0]}.json`;
+      const content = JSON.stringify(backup, null, 2);
+
+      // Salvar de forma cross‑plataforma (Android/iOS: Filesystem; Web/Dev: public/ via endpoint)
+      const saveResult = await saveBackupJson(fileName, content);
+      if (!saveResult.success) {
+        // Fallback para download via navegador (útil no web se endpoint não estiver disponível)
+        try {
+          const blob = new Blob([content], { type: 'application/json' });
+          const url = URL.createObjectURL(blob);
+          const a = document.createElement('a');
+          a.href = url;
+          a.download = fileName;
+          document.body.appendChild(a);
+          a.click();
+          document.body.removeChild(a);
+          URL.revokeObjectURL(url);
+          console.warn('Falha no salvamento cross‑plataforma, realizado download via navegador.');
+        } catch (fallbackErr) {
+          console.error('Falha no fallback de download:', fallbackErr);
+        }
+      }
+
+      // Persistir metadados para auto‑restore
+      saveBackupForAutoRestore(backup, fileName);
+
+      // Opcional: salvar também no Supabase (se configurado)
+      try {
+        const cloud = await saveBackupToSupabase(backup, fileName);
+        if (!cloud.success) {
+          console.warn('Não foi possível salvar no Supabase:', cloud.error);
+        }
+      } catch (supErr) {
+        console.warn('Erro ao salvar no Supabase:', supErr);
+      }
+
+      // Após salvar, abrir a folha de compartilhamento no Android
+      try {
+        // Converter conteúdo para Base64 (para uso no serviço de compartilhamento)
+        const base64Content = btoa(unescape(encodeURIComponent(content)));
+
+        if (fileSharingService.isSharingSupported() && Capacitor.getPlatform() === 'android') {
+          const shared = await fileSharingService.shareFile({
+            filename: fileName,
+            data: base64Content,
+            mimeType: 'application/json'
+          });
+
+          if (!shared) {
+            console.warn('Falha ao abrir compartilhamento para o backup.');
+          }
+        } else {
+          // Em plataformas web, manter o comportamento de download (já realizado acima no fallback)
+          console.log('Compartilhamento não suportado nesta plataforma.');
+        }
+      } catch (shareErr) {
+        console.error('Erro ao compartilhar backup:', shareErr);
+      }
+
+      console.log('Backup realizado e salvo com sucesso.');
     } catch (error) {
       console.error('Erro ao fazer backup:', error);
-      // toast.error('Erro ao fazer backup');
-      console.error('Erro ao fazer backup');
+    } finally {
+      setIsBackingUp(false);
     }
   };
 
@@ -41,16 +97,45 @@ const BackupMaintenance = () => {
 
   const handleRestoreConfirm = async () => {
     try {
-      const backupObj = JSON.parse(backupData);
-      restoreBackup(backupObj);
+      const parsed = JSON.parse(backupData);
+
+      // Suporte a dois formatos de backup:
+      // - JSON simples (mapa de chaves) -> restoreByKeyMap
+      // - BackupData estruturado ({ timestamp, version, data }) -> restoreStructuredBackup
+      if (parsed && parsed.timestamp && parsed.version && parsed.data) {
+        const result = restoreStructuredBackup(parsed as BackupData);
+        if (!result.success) {
+          console.warn('Restauração estruturada reportou erros:', result.errors?.join(', '));
+        }
+      } else {
+        restoreByKeyMap(parsed as Record<string, any>);
+      }
+      // Persist the uploaded backup JSON locally for future auto-restore
+      const backupForPersistence: BackupData = (
+        parsed && parsed.timestamp && parsed.version && parsed.data
+      ) ? parsed as BackupData : {
+        timestamp: new Date().toISOString(),
+        version: '1.0.0',
+        data: parsed as Record<string, any>
+      };
+      saveBackupForAutoRestore(backupForPersistence, backupFileName);
+      // Salvar backup localmente (web: public/, Android: Filesystem)
+      if (backupFileName && backupData) {
+        const resultLocal = await saveBackupJson(backupFileName, backupData);
+        if (!resultLocal.success) {
+          console.warn('Falha ao salvar JSON localmente:', resultLocal.error);
+        }
+      }
       
       // Save the backup file to Supabase storage
       try {
-        // Create a BackupData object similar to what's used in backupService
-        const backupForSupabase = {
+        // Preparar objeto BackupData para salvar no Supabase
+        const backupForSupabase: BackupData = (
+          parsed && parsed.timestamp && parsed.version && parsed.data
+        ) ? parsed as BackupData : {
           timestamp: new Date().toISOString(),
           version: '1.0.0',
-          data: backupObj
+          data: parsed as Record<string, any>
         };
         
         const result = await saveBackupToSupabase(backupForSupabase, backupFileName);
@@ -88,8 +173,23 @@ const BackupMaintenance = () => {
       try {
         const content = e.target?.result as string;
         // Verificar se o conteúdo é um JSON válido
-        JSON.parse(content);
+        const parsed = JSON.parse(content);
         setBackupData(content);
+        // Persist immediately the uploaded backup for future auto-restore
+        const backupForPersistence: BackupData = (
+          parsed && parsed.timestamp && parsed.version && parsed.data
+        ) ? parsed as BackupData : {
+          timestamp: new Date().toISOString(),
+          version: '1.0.0',
+          data: parsed as Record<string, any>
+        };
+        saveBackupForAutoRestore(backupForPersistence, file.name);
+        // Salvar backup localmente (web: public/, Android: Filesystem)
+        saveBackupJson(file.name, content).then((res) => {
+          if (!res.success) {
+            console.warn('Falha ao salvar JSON localmente:', res.error);
+          }
+        });
       } catch (error) {
         console.error('Erro ao ler arquivo de backup:', error);
         // toast.error('Arquivo de backup inválido. Selecione um arquivo JSON válido.');
@@ -142,9 +242,22 @@ const BackupMaintenance = () => {
         <Button
           className="w-full bg-blue-600 hover:bg-blue-700 text-white h-12 sm:h-14 text-base sm:text-lg rounded-lg flex items-center justify-center gap-2"
           onClick={handleBackup}
+          disabled={isBackingUp}
         >
-          <RotateCw className="h-4 w-4 sm:h-5 sm:w-5" />
-          Fazer Backup
+          {isBackingUp ? (
+            <>
+              <svg className="animate-spin -ml-1 mr-2 h-4 w-4 text-white" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
+                <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
+                <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
+              </svg>
+              Processando...
+            </>
+          ) : (
+            <>
+              <RotateCw className="h-4 w-4 sm:h-5 sm:w-5" />
+              Fazer Backup
+            </>
+          )}
         </Button>
 
         <Button

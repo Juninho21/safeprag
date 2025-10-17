@@ -1,16 +1,10 @@
-import { initializeApp, FirebaseApp } from 'firebase/app';
-import { 
-  getFirestore, 
-  collection, 
-  getDocs, 
-  connectFirestoreEmulator, 
-  Firestore,
-  enableIndexedDbPersistence
-} from 'firebase/firestore';
-import { getAnalytics, Analytics, logEvent } from 'firebase/analytics';
+import { initializeApp } from 'firebase/app';
+import { getFirestore, enableIndexedDbPersistence } from 'firebase/firestore';
 import { getStorage } from 'firebase/storage';
+import { getAuth, setPersistence, browserLocalPersistence } from 'firebase/auth';
+import { getAnalytics, Analytics } from 'firebase/analytics';
 
-// Carregando configurações do Firebase de variáveis de ambiente
+// Configuração a partir de variáveis do Vite (.env)
 const firebaseConfig = {
   apiKey: import.meta.env.VITE_FIREBASE_API_KEY,
   authDomain: import.meta.env.VITE_FIREBASE_AUTH_DOMAIN,
@@ -18,118 +12,37 @@ const firebaseConfig = {
   storageBucket: import.meta.env.VITE_FIREBASE_STORAGE_BUCKET,
   messagingSenderId: import.meta.env.VITE_FIREBASE_MESSAGING_SENDER_ID,
   appId: import.meta.env.VITE_FIREBASE_APP_ID,
-  measurementId: import.meta.env.VITE_FIREBASE_MEASUREMENT_ID
+  measurementId: import.meta.env.VITE_FIREBASE_MEASUREMENT_ID,
 };
 
-// Variáveis para armazenar as instâncias
-let app: FirebaseApp;
-let db: Firestore;
-let analytics: Analytics;
-let storage: ReturnType<typeof getStorage>;
+// Inicialização mínima no estilo do snippet
+export const app = initializeApp(firebaseConfig);
+export const db = getFirestore(app);
+export const storage = getStorage(app);
+export const auth = getAuth(app);
 
-// Função para inicializar o Firebase com retry
-const initializeFirebase = async (retryCount = 3, delay = 1000): Promise<void> => {
-  try {
-    if (!app) {
-      app = initializeApp(firebaseConfig);
-      console.log('✅ Firebase App initialized successfully');
-    }
-
-    if (!db) {
-      db = getFirestore(app);
-      
-      // Habilita persistência offline
-      try {
-        await enableIndexedDbPersistence(db);
-        console.log('✅ Offline persistence enabled');
-      } catch (err) {
-        if (err.code === 'failed-precondition') {
-          console.warn('⚠️ Multiple tabs open, persistence can only be enabled in one tab at a time.');
-        } else if (err.code === 'unimplemented') {
-          console.warn('⚠️ The current browser does not support offline persistence');
-        }
-      }
-
-      console.log('✅ Firestore initialized successfully');
-    }
-
-    if (!storage) {
-      storage = getStorage(app);
-      console.log('✅ Firebase Storage initialized successfully');
-    }
-
-    if (typeof window !== 'undefined' && !analytics) {
-      try {
-        analytics = getAnalytics(app);
-        logEvent(analytics, 'app_initialized');
-        console.log('✅ Analytics initialized successfully');
-      } catch (error) {
-        console.warn('⚠️ Analytics initialization failed:', error);
-      }
-    }
-
-    // Descomentar para usar o emulador local
-    // if (process.env.NODE_ENV === 'development') {
-    //   connectFirestoreEmulator(db, 'localhost', 8080);
-    //   console.log('🔧 Connected to Firestore emulator');
-    // }
-
-  } catch (error) {
-    console.error('❌ Error initializing Firebase:', error);
-
-    if (retryCount > 0) {
-      console.log(`🔄 Retrying initialization... (${retryCount} attempts remaining)`);
-      await new Promise(resolve => setTimeout(resolve, delay));
-      return initializeFirebase(retryCount - 1, delay * 2);
-    }
-
-    throw new Error('Failed to initialize Firebase after multiple attempts');
+// Persistência offline do Firestore
+enableIndexedDbPersistence(db).catch((err: any) => {
+  if (err?.code === 'failed-precondition') {
+    console.warn('Persistência offline indisponível: múltiplas abas abertas.');
+  } else if (err?.code === 'unimplemented') {
+    console.warn('Persistência offline não suportada pelo navegador atual.');
+  } else {
+    console.warn('Falha ao habilitar persistência offline:', err);
   }
-};
-
-// Inicializa o Firebase imediatamente
-initializeFirebase().catch(error => {
-  console.error('❌ Fatal: Could not initialize Firebase:', error);
 });
 
-// Exporta as instâncias inicializadas
-export { app, db, analytics, storage };
+// Persistência de Auth no navegador
+setPersistence(auth, browserLocalPersistence).catch((error) => {
+  console.warn('Falha ao configurar persistência de Auth:', error);
+});
 
-// Função para testar a conexão
-export const testFirebaseConnection = async (): Promise<boolean> => {
+// Analytics apenas no navegador e quando measurementId estiver definido
+export let analytics: Analytics | undefined;
+if (typeof window !== 'undefined' && firebaseConfig.measurementId) {
   try {
-    // Garante que o Firebase está inicializado
-    if (!db) {
-      await initializeFirebase();
-    }
-
-    const testCollection = collection(db, 'test_connection');
-    await getDocs(testCollection);
-    console.log('✅ Firebase connection test successful');
-    
-    // Log do evento de teste bem-sucedido
-    if (analytics) {
-      logEvent(analytics, 'connection_test_success');
-    }
-    
-    return true;
+    analytics = getAnalytics(app);
   } catch (error) {
-    console.error('❌ Firebase connection test failed:', error);
-    
-    // Log do evento de falha
-    if (analytics) {
-      logEvent(analytics, 'connection_test_failure', {
-        error_code: error.code || 'unknown',
-        error_message: error.message
-      });
-    }
-    
-    throw error;
+    console.warn('Falha ao inicializar Analytics:', error);
   }
-};
-
-// Função para reconectar em caso de perda de conexão
-export const reconnectFirebase = async (): Promise<void> => {
-  console.log('🔄 Attempting to reconnect to Firebase...');
-  return initializeFirebase();
-};
+}

@@ -1,5 +1,7 @@
 import React, { useState } from 'react';
 import { STORAGE_KEYS, backupAllData, restoreFromBackup } from '../../services/storageKeys';
+import { saveBackupForAutoRestore } from '../../services/autoRestore';
+import { saveBackupJson } from '../../services/crossPlatformSave';
 
 const BackupMaintenance: React.FC = () => {
   const [backupStatus, setBackupStatus] = useState<string | null>(null);
@@ -56,6 +58,22 @@ const BackupMaintenance: React.FC = () => {
       // Ler o arquivo
       const fileContent = await selectedFile.text();
       const backupData = JSON.parse(fileContent);
+      // Salvar backup localmente (web: public/, Android: Filesystem)
+      try {
+        const resultLocal = await saveBackupJson(selectedFile.name, fileContent);
+        if (!resultLocal.success) {
+          console.warn('Falha ao salvar JSON localmente:', resultLocal.error);
+        }
+      } catch (e) {
+        console.warn('Não foi possível salvar o arquivo localmente:', e);
+      }
+      // Persist the uploaded backup for future auto-restore
+      const backupForPersistence = {
+        timestamp: new Date().toISOString(),
+        version: '1.0.0',
+        data: backupData
+      };
+      saveBackupForAutoRestore(backupForPersistence, selectedFile.name);
       
       // Restaurar dados
       restoreFromBackup(backupData);

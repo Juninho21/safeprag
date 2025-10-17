@@ -16,6 +16,8 @@ import {
   BackupData,
   BackupInfo
 } from '../services/backupService';
+import { saveBackupForAutoRestore } from '../services/autoRestore';
+import { saveBackupJson } from '../services/crossPlatformSave';
 
 interface BackupManagerProps {
   onClose?: () => void;
@@ -142,8 +144,20 @@ const BackupManager: React.FC<BackupManagerProps> = ({ onClose }) => {
 
     setIsLoading(true);
     try {
+      // Salvar o JSON selecionado localmente (web: public/, Android: Filesystem)
+      try {
+        const contentStr = await file.text();
+        const resultLocal = await saveBackupJson(file.name, contentStr);
+        if (!resultLocal.success) {
+          console.warn('Falha ao salvar JSON localmente:', resultLocal.error);
+        }
+      } catch (e) {
+        console.warn('Não foi possível salvar o arquivo localmente:', e);
+      }
       // Importar backup e salvar automaticamente no Supabase
       const backup = await importBackupFromFile(file, true); // Save to Supabase during import
+      // Persist the uploaded backup JSON locally for future auto-restore
+      saveBackupForAutoRestore(backup, file.name);
       const result = restoreBackup(backup);
 
       if (result.success) {
@@ -449,19 +463,31 @@ const BackupManager: React.FC<BackupManagerProps> = ({ onClose }) => {
                             <button
                               onClick={async () => {
                                 setIsLoading(true);
-                                try {
-                                  const result = await downloadBackupFromSupabase(backup.name);
+                            try {
+                              const result = await downloadBackupFromSupabase(backup.name);
                                   if (result.success && result.backup) {
+                                    // Salvar backup localmente (web: public/, Android: Filesystem)
+                                    try {
+                                      const contentStr = JSON.stringify(result.backup, null, 2);
+                                      const saveResult = await saveBackupJson(backup.name, contentStr);
+                                      if (!saveResult.success) {
+                                        console.warn('Falha ao salvar backup localmente:', saveResult.error);
+                                      }
+                                    } catch (e) {
+                                      console.warn('Não foi possível salvar o backup baixado localmente:', e);
+                                    }
+                                    // Persist the downloaded backup for auto-restore as well
+                                    saveBackupForAutoRestore(result.backup, backup.name);
                                     const restoreResult = restoreBackup(result.backup);
                                     if (restoreResult.success) {
                                       setDataStats(getDataStats());
-                                      showMessage('success', `Backup restaurado do Supabase! ${restoreResult.restored} itens.`);
-                                    } else {
-                                      showMessage('error', `Falha na restauração: ${restoreResult.errors.join(', ')}`);
-                                    }
-                                  } else {
-                                    showMessage('error', `Erro ao baixar backup: ${result.error}`);
-                                  }
+                                  showMessage('success', `Backup restaurado do Supabase! ${restoreResult.restored} itens.`);
+                                } else {
+                                  showMessage('error', `Falha na restauração: ${restoreResult.errors.join(', ')}`);
+                                }
+                              } else {
+                                showMessage('error', `Erro ao baixar backup: ${result.error}`);
+                              }
                                 } catch (error) {
                                   showMessage('error', `Erro: ${error instanceof Error ? error.message : 'Erro desconhecido'}`);
                                 } finally {

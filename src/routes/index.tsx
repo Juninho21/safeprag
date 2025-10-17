@@ -5,19 +5,26 @@ import App from '../App';
 import { AdminPage } from '../components/AdminPage';
 // import { SupabaseIntegration } from '../pages/Admin/SupabaseIntegration';
 import { Login } from "../components/Login";
-import { Register } from '../components/Register';
 import { useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { ReactNode } from 'react';
+import { useAuth } from '../contexts/AuthContext';
 
 // Componente para layout principal (sem autenticação)
 const MainLayout = () => {
   return <Outlet />;
 };
 
-// Componente RequireAuth desabilitado temporariamente
+// Componente RequireAuth: protege rotas quando não autenticado
 function RequireAuth({ children }: { children: ReactNode }) {
-  // Autenticação desabilitada - sempre permite acesso
+  const { user, loading } = useAuth();
+
+  if (loading) {
+    return <div className="p-6 text-center text-gray-600">Carregando...</div>;
+  }
+  if (!user) {
+    return <Navigate to="/login" replace />;
+  }
   return children;
 }
 
@@ -25,10 +32,6 @@ export const router = createBrowserRouter([
   {
     path: '/login',
     element: <Login />,
-  },
-  {
-    path: '/cadastro',
-    element: <Register />,
   },
   {
     element: <MainLayout />,

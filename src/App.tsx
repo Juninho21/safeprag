@@ -599,7 +599,7 @@ function App() {
     // Antes de salvar, garantir que o status não é null se savedDevices na State espera string
     const devicesToSave = state.devices.map(device => ({
         ...device,
-        status: device.status || '' // Converter null para string vazia se necessário
+        status: device.status || 'Conforme' // Dispositivos não marcados devem ser salvos como "Conforme"
     }));
 
     dispatch({ type: 'SAVE_DEVICES', payload: devicesToSave }); // Passar payload para SAVE_DEVICES
@@ -863,7 +863,41 @@ function App() {
       }, {} as Record<string, any>);
 
       // Converter para o formato esperado pelo PDF
-      const formattedDevices = Object.values(deviceGroups);
+      const formattedDevices = Object.values(deviceGroups).map((group: any) => {
+        // Garante que "Conforme" apareça com números complementares
+        const allNumbers = (group.list || []).map((n: any) => Number(n)).filter((n: any) => !isNaN(n));
+        const nonConformeNumbers = new Set<number>();
+        (group.status || [])
+          .filter((s: any) => s.name !== 'Conforme')
+          .forEach((s: any) => {
+            (s.devices || []).forEach((num: any) => {
+              const parsed = Number(num);
+              if (!isNaN(parsed)) nonConformeNumbers.add(parsed);
+            });
+          });
+        const conformeComplement = allNumbers.filter((n: number) => !nonConformeNumbers.has(n));
+
+        let existingConforme = (group.status || []).find((s: any) => s.name === 'Conforme');
+        if (!existingConforme && conformeComplement.length > 0) {
+          group.status.push({ name: 'Conforme', count: conformeComplement.length, devices: conformeComplement });
+        } else if (existingConforme) {
+          const union = new Set<number>([...((existingConforme.devices || []).map((n: any) => Number(n)).filter((n: any) => !isNaN(n))), ...conformeComplement]);
+          const unionArr = Array.from(union).sort((a, b) => a - b);
+          existingConforme.devices = unionArr;
+          existingConforme.count = unionArr.length;
+        }
+
+        // Ajusta contagem total coerente com quantity
+        const totalCount = (group.status || []).reduce((sum: number, s: any) => sum + (Number(s.count) || 0), 0);
+        if (Number(group.quantity) && totalCount !== Number(group.quantity)) {
+          const restante = Number(group.quantity) - ((group.status || []).filter((s: any) => s.name !== 'Conforme').reduce((sum: number, s: any) => sum + (Number(s.count) || 0), 0));
+          existingConforme = (group.status || []).find((s: any) => s.name === 'Conforme');
+          if (existingConforme && restante >= 0) {
+            existingConforme.count = Math.max(restante, existingConforme.devices?.length || 0);
+          }
+        }
+        return group;
+      });
 
       // Preparar dados para o PDF
       // Obter a lista de serviços do componente ServiceActivity
@@ -1161,7 +1195,23 @@ function App() {
         }
         
         // Processar os status do dispositivo - garantir que seja um array de strings
-        const statusList = Array.isArray(device.status) ? device.status : (device.status ? [device.status] : []);
+        // Regra: status vazio ou "Não definido"/variações devem ser tratados como "Conforme" no relatório PDF
+        const normalizeStatus = (s: string | null | undefined): string => {
+          const raw = (s || '').trim();
+          if (!raw) return 'Conforme';
+          const lowerNoAccent = raw
+            .normalize('NFD')
+            .replace(/\p{Diacritic}/gu, '')
+            .toLowerCase();
+          if (lowerNoAccent === 'nao definido' || lowerNoAccent === 'não definido' || lowerNoAccent === 'nao-definido' || lowerNoAccent === 'nao_definido') {
+            return 'Conforme';
+          }
+          return raw;
+        };
+
+        const statusList = Array.isArray(device.status)
+          ? (device.status as any[]).map((s: any) => normalizeStatus(typeof s === 'string' ? s : String(s)))
+          : [normalizeStatus(device.status as any)];
 
         statusList.forEach((status: string) => {
           const existingStatus = acc[device.type].status.find((s: any) => s.name === status);
@@ -1184,6 +1234,45 @@ function App() {
 
         return acc;
       }, {} as Record<string, any>);
+
+      // Garantir inclusão de "Conforme" como complemento com lista de números
+      Object.values(formattedDeviceGroups).forEach((group: any) => {
+        const allNumbers = (group.list || []).map((n: any) => Number(n)).filter((n: any) => !isNaN(n));
+        const nonConformeNumbers = new Set<number>();
+        (group.status || [])
+          .filter((s: any) => s.name !== 'Conforme')
+          .forEach((s: any) => {
+            (s.devices || []).forEach((num: any) => {
+              const parsed = Number(num);
+              if (!isNaN(parsed)) nonConformeNumbers.add(parsed);
+            });
+          });
+        const conformeComplement = allNumbers.filter((n: number) => !nonConformeNumbers.has(n));
+
+        let existingConforme = (group.status || []).find((s: any) => s.name === 'Conforme');
+        if (!existingConforme && conformeComplement.length > 0) {
+          group.status.push({ name: 'Conforme', count: conformeComplement.length, devices: conformeComplement });
+        } else if (existingConforme) {
+          const union = new Set<number>([...((existingConforme.devices || []).map((n: any) => Number(n)).filter((n: any) => !isNaN(n))), ...conformeComplement]);
+          const unionArr = Array.from(union).sort((a, b) => a - b);
+          existingConforme.devices = unionArr;
+          existingConforme.count = unionArr.length;
+        }
+
+        const nonConformeCount = (group.status || [])
+          .filter((s: any) => s.name !== 'Conforme')
+          .reduce((sum: number, s: any) => sum + (Number(s.count) || 0), 0);
+        const restante = Number(group.quantity) - nonConformeCount;
+        existingConforme = (group.status || []).find((s: any) => s.name === 'Conforme');
+        if (existingConforme && restante >= 0) {
+          // Garante que count e lista estejam coerentes
+          if (!Array.isArray(existingConforme.devices)) existingConforme.devices = [];
+          if (existingConforme.devices.length !== restante) {
+            // Se houver divergência, ajusta o count ao tamanho da lista
+            existingConforme.count = existingConforme.devices.length;
+          }
+        }
+      });
 
       // Converter o objeto agrupado de volta para um array de valores
       const formattedDevicesArray = Object.values(formattedDeviceGroups);

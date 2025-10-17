@@ -141,18 +141,29 @@ export const ImageUpload: React.FC<ImageUploadProps> = ({
   };
 
   const handleClick = () => {
+    // Em alguns WebViews móveis (Android/iOS), disparar click()
+    // em inputs com display:none pode ser bloqueado.
+    // Mantemos o gesture handler, mas garantimos que o input
+    // esteja presente e acessível na árvore para compatibilidade.
     fileInputRef.current?.click();
   };
 
   return (
     <div className={`relative border-2 border-dashed rounded-lg p-4 text-center cursor-pointer hover:border-blue-500 transition-colors ${className}`}
          onClick={handleClick}>
+      {/*
+        No Android WebView, inputs com display:none podem não abrir
+        o seletor de arquivos via click(). Para melhor compatibilidade,
+        mantemos o input visível para o navegador, porém invisível ao usuário
+        (opacity-0) e ocupando toda a área clicável.
+      */}
       <input
         type="file"
         ref={fileInputRef}
         onChange={handleFileChange}
         accept="image/*"
-        className="hidden"
+        // Tornar acessível ao motor de renderização, mas invisível ao usuário
+        className="absolute inset-0 w-full h-full opacity-0 cursor-pointer"
       />
       {isResizing && (
         <div className="absolute inset-0 flex items-center justify-center bg-black bg-opacity-50 z-10">
