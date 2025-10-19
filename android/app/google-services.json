@@ -14,6 +14,14 @@
       },
       "oauth_client": [
         {
+          "client_id": "759964931590-p4mke6gm8t6amj03eoncj3phtd4vqfk9.apps.googleusercontent.com",
+          "client_type": 1,
+          "android_info": {
+            "package_name": "com.safeprag.app",
+            "certificate_hash": "bdc70d2159c1b50c8506b245990e2f5294ee3387"
+          }
+        },
+        {
           "client_id": "759964931590-iiigm5did69ttrjj98unt5pl15ardtb2.apps.googleusercontent.com",
           "client_type": 3
         }

@@ -68,13 +68,6 @@ export const PestCounter: React.FC<PestCounterProps> = ({
         <h3 className="text-lg font-semibold text-gray-800">
           {deviceType} {deviceNumber}
         </h3>
-        <button
-          onClick={handleSave}
-          className="bg-green-500 hover:bg-green-600 text-white px-3 py-1 rounded-md flex items-center"
-        >
-          <Save className="w-4 h-4 mr-1" />
-          Salvar
-        </button>
       </div>
 
       <div className="space-y-3">
@@ -143,6 +136,16 @@ export const PestCounter: React.FC<PestCounterProps> = ({
           Adicionar nova praga
         </button>
       )}
+
+      <div className="mt-6 flex justify-end">
+        <button
+          onClick={handleSave}
+          className="bg-green-500 hover:bg-green-600 text-white px-4 py-2 rounded-md flex items-center"
+        >
+          <Save className="w-4 h-4 mr-2" />
+          Salvar
+        </button>
+      </div>
     </div>
   );
 };

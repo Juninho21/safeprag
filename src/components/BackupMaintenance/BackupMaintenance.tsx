@@ -18,6 +18,7 @@ const BackupMaintenance = () => {
   const [backupFileName, setBackupFileName] = useState(''); // Store the backup file name
   const fileInputRef = useRef<HTMLInputElement>(null);
   const [isBackingUp, setIsBackingUp] = useState(false);
+  const [flashRestore, setFlashRestore] = useState(false);
 
   const handleBackup = async () => {
     setIsBackingUp(true);
@@ -175,6 +176,8 @@ const BackupMaintenance = () => {
         // Verificar se o conteúdo é um JSON válido
         const parsed = JSON.parse(content);
         setBackupData(content);
+        setFlashRestore(true);
+        setTimeout(() => setFlashRestore(false), 15000);
         // Persist immediately the uploaded backup for future auto-restore
         const backupForPersistence: BackupData = (
           parsed && parsed.timestamp && parsed.version && parsed.data
@@ -336,7 +339,7 @@ const BackupMaintenance = () => {
               </Button>
               <Button 
                 onClick={handleRestoreConfirm}
-                className="w-full sm:w-auto"
+                className={`w-full sm:w-auto ${flashRestore ? 'animate-blink-green' : ''}`}
                 disabled={!backupData}
               >
                 Restaurar

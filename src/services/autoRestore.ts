@@ -1,5 +1,5 @@
 import { restoreBackup, BackupData } from './backupService';
-import { restoreBackup as restoreByKeyMap } from './storageKeys';
+import { restoreBackup as restoreByKeyMap, STORAGE_KEYS } from './storageKeys';
 import { Capacitor } from '@capacitor/core';
 
 const INIT_FLAG_KEY = 'safeprag_initial_restore_done';
@@ -27,11 +27,26 @@ export function saveBackupForAutoRestore(backup: BackupData, fileName?: string):
 
 export async function autoRestoreOnStartup(): Promise<void> {
   try {
-    // Always attempt to restore from public files regardless of existing data.
+    // Evita restaurar repetidamente se já foi feito uma vez
+    const alreadyRestored = localStorage.getItem(INIT_FLAG_KEY) === 'true';
+    if (alreadyRestored) {
+      console.log('[AutoRestore] Inicialização já restaurada anteriormente; pulando auto-restauração.');
+      return;
+    }
+
+    // Detecta se existem agendamentos locais para preservar
+    let hasExistingSchedules = false;
+    try {
+      const schedulesStr = localStorage.getItem(STORAGE_KEYS.SCHEDULES);
+      if (schedulesStr) {
+        const parsed = JSON.parse(schedulesStr);
+        hasExistingSchedules = Array.isArray(parsed) && parsed.length > 0;
+      }
+    } catch {}
 
     const isNative = Capacitor.getPlatform() !== 'web';
 
-    // 0) Android/iOS: tentar primeiro do Filesystem interno (latest-backup.json)
+    // 1) Android/iOS: tentar primeiro do Filesystem interno (latest-backup.json)
     if (isNative) {
       try {
         const { Filesystem, Directory } = await import('@capacitor/filesystem');
@@ -43,13 +58,26 @@ export async function autoRestoreOnStartup(): Promise<void> {
         if (latest?.data) {
           const jsonLatest = JSON.parse(latest.data);
           if (jsonLatest && jsonLatest.timestamp && jsonLatest.version && jsonLatest.data) {
+            // Não sobrescreve agendamentos se já existem localmente
+            if (hasExistingSchedules && jsonLatest.data) {
+              delete jsonLatest.data[STORAGE_KEYS.SCHEDULES];
+              console.log('[AutoRestore] Mantendo agendamentos locais (mobile).');
+            }
             const resultLatest = restoreBackup(jsonLatest as BackupData);
             if (resultLatest.success) {
               localStorage.setItem(INIT_FLAG_KEY, 'true');
               console.log('[AutoRestore] (Mobile) Restaurado via Filesystem: latest-backup.json');
               return;
+            } else {
+              console.warn('[AutoRestore] (Mobile) Falha ao restaurar backup do Filesystem.');
             }
           } else {
+            // JSON simples via mapa de chaves
+            if (hasExistingSchedules) {
+              delete jsonLatest['SCHEDULES'];
+              delete jsonLatest[STORAGE_KEYS.SCHEDULES];
+              console.log('[AutoRestore] Mantendo agendamentos locais (mobile JSON simples).');
+            }
             restoreByKeyMap(jsonLatest as Record<string, any>);
             localStorage.setItem(INIT_FLAG_KEY, 'true');
             console.log('[AutoRestore] (Mobile) Restaurado via Filesystem JSON simples: latest-backup.json');
@@ -61,14 +89,18 @@ export async function autoRestoreOnStartup(): Promise<void> {
       }
     }
 
-    // 1) Try well-known latest-backup.json first (always prioritized)
+    // 2) Web: tentar latest-backup.json no diretório público
     const latestPath = `${import.meta.env.BASE_URL}latest-backup.json`;
     try {
       const resLatest = await fetch(latestPath, { cache: 'no-cache' });
       if (resLatest.ok) {
         const jsonLatest = await resLatest.json();
-        // If JSON is in backup format (with data), use backupService restore; otherwise map keys via storageKeys
         if (jsonLatest && jsonLatest.timestamp && jsonLatest.version && jsonLatest.data) {
+          // Não sobrescreve agendamentos se já existem localmente
+          if (hasExistingSchedules && jsonLatest.data) {
+            delete jsonLatest.data[STORAGE_KEYS.SCHEDULES];
+            console.log('[AutoRestore] Mantendo agendamentos locais (web).');
+          }
           const resultLatest = restoreBackup(jsonLatest as BackupData);
           if (resultLatest.success) {
             localStorage.setItem(INIT_FLAG_KEY, 'true');
@@ -78,141 +110,27 @@ export async function autoRestoreOnStartup(): Promise<void> {
             console.warn(`[AutoRestore] Restore from ${latestPath} reported errors: ${resultLatest.errors.join(', ')}`);
           }
         } else {
-          // Plain JSON (e.g., { COMPANY, CLIENTS, ... })
+          // JSON simples via mapa de chaves
+          if (hasExistingSchedules) {
+            delete jsonLatest['SCHEDULES'];
+            delete jsonLatest[STORAGE_KEYS.SCHEDULES];
+            console.log('[AutoRestore] Mantendo agendamentos locais (web JSON simples).');
+          }
           restoreByKeyMap(jsonLatest as Record<string, any>);
           localStorage.setItem(INIT_FLAG_KEY, 'true');
           console.log(`[AutoRestore] Restored items from plain JSON at ${latestPath}.`);
           return;
         }
+      } else {
+        console.warn(`[AutoRestore] latest-backup.json não encontrado em ${latestPath} (status ${resLatest.status}).`);
       }
     } catch (e) {
-      // Ignore and fall through to other strategies
+      console.warn('[AutoRestore] Erro ao buscar latest-backup.json na web:', e);
     }
 
-    // 2) Try a user-saved backup persisted locally (with original fileName)
-    const persistedStr = localStorage.getItem(PERSISTED_BACKUP_KEY);
-    if (persistedStr) {
-      try {
-        const payload = JSON.parse(persistedStr) as PersistedBackupMeta;
-
-        // Mobile: tentar arquivo com o nome original salvo no Filesystem
-        if (isNative && payload.fileName) {
-          try {
-            const { Filesystem, Directory } = await import('@capacitor/filesystem');
-            const normalizedName = payload.fileName.endsWith('.json') ? payload.fileName : `${payload.fileName}.json`;
-            const file = await Filesystem.readFile({
-              path: normalizedName,
-              directory: Directory.Data,
-              encoding: 'utf8',
-            });
-            if (file?.data) {
-              const json = JSON.parse(file.data);
-              if (json && json.timestamp && json.version && json.data) {
-                const result = restoreBackup(json as BackupData);
-                if (result.success) {
-                  localStorage.setItem(INIT_FLAG_KEY, 'true');
-                  console.log(`[AutoRestore] (Mobile) Restaurado via Filesystem: ${normalizedName}.`);
-                  return;
-                }
-              } else {
-                restoreByKeyMap(json as Record<string, any>);
-                localStorage.setItem(INIT_FLAG_KEY, 'true');
-                console.log(`[AutoRestore] (Mobile) Restaurado via Filesystem JSON simples: ${normalizedName}.`);
-                return;
-              }
-            }
-          } catch (err) {
-            // prosseguir para caminhos web
-          }
-        }
-
-        // Try to restore from a copy saved in public (if available)
-        if (payload.fileName) {
-          const publicUrl = `${import.meta.env.BASE_URL}${payload.fileName}`;
-          try {
-            const res = await fetch(publicUrl, { cache: 'no-cache' });
-            if (res.ok) {
-              const json = await res.json();
-              if (json && json.timestamp && json.version && json.data) {
-                const result = restoreBackup(json as BackupData);
-                if (result.success) {
-                  localStorage.setItem(INIT_FLAG_KEY, 'true');
-                  console.log(`[AutoRestore] Restored ${result.restored} items from public file (${payload.fileName}).`);
-                  return;
-                }
-              } else {
-                restoreByKeyMap(json as Record<string, any>);
-                localStorage.setItem(INIT_FLAG_KEY, 'true');
-                console.log(`[AutoRestore] Restored items from plain JSON public file (${payload.fileName}).`);
-                return;
-              }
-            } else {
-              console.warn(`[AutoRestore] Public file not found at ${publicUrl} (status ${res.status}). Falling back to persisted payload.`);
-            }
-          } catch (err) {
-            console.warn('[AutoRestore] Error restoring from public file, falling back to persisted payload:', err);
-          }
-        }
-
-        // Fallback to persisted payload in localStorage
-        if (payload.backup && payload.backup.data) {
-          // If data object uses internal storage keys, use backupService; else map via storageKeys
-          const hasInternalKeys = Object.keys(payload.backup.data).some(k => k.startsWith('safeprag_'));
-          if (hasInternalKeys) {
-            const result = restoreBackup(payload.backup);
-            if (result.success) {
-              localStorage.setItem(INIT_FLAG_KEY, 'true');
-              console.log(`[AutoRestore] Restored ${result.restored} items from persisted backup (${payload.fileName || 'unnamed'}).`);
-              return;
-            } else {
-              console.warn(`[AutoRestore] Persisted restore reported errors: ${result.errors.join(', ')}`);
-            }
-          } else {
-            restoreByKeyMap(payload.backup.data);
-            localStorage.setItem(INIT_FLAG_KEY, 'true');
-            console.log(`[AutoRestore] Restored items from persisted plain backup (${payload.fileName || 'unnamed'}).`);
-            return;
-          }
-        }
-      } catch (err) {
-        console.error('[AutoRestore] Failed to restore from persisted backup:', err);
-      }
-    }
-
-    // 3) Fallback to bundled default backup path
-    const defaultPath = (import.meta.env.VITE_DEFAULT_BACKUP_PATH as string) || `${import.meta.env.BASE_URL}default-backup.json`;
-    const candidates = [defaultPath];
-
-    for (const path of candidates) {
-      try {
-        const res = await fetch(path, { cache: 'no-cache' });
-        if (!res.ok) {
-          console.warn(`[AutoRestore] Backup file not found at ${path} (status ${res.status}).`);
-          continue;
-        }
-        const json = await res.json();
-        if (json && json.timestamp && json.version && json.data) {
-          const result = restoreBackup(json as BackupData);
-          if (result.success) {
-            localStorage.setItem(INIT_FLAG_KEY, 'true');
-            console.log(`[AutoRestore] Restored ${result.restored} items from ${path}.`);
-            return;
-          } else {
-            console.warn(`[AutoRestore] Restore reported errors: ${result.errors.join(', ')}`);
-          }
-        } else {
-          restoreByKeyMap(json as Record<string, any>);
-          localStorage.setItem(INIT_FLAG_KEY, 'true');
-          console.log(`[AutoRestore] Restored items from plain JSON at ${path}.`);
-          return;
-        }
-      } catch (err) {
-        console.error(`[AutoRestore] Error restoring from ${path}:`, err);
-      }
-    }
-
-    console.warn('[AutoRestore] No valid backup file found, skipping.');
+    // 3) Caso não encontre: permanecer em branco, aguardando backup manual
+    console.warn('[AutoRestore] latest-backup.json não disponível. Inicialização sem dados. Aguarda backup manual.');
   } catch (error) {
-    console.error('[AutoRestore] Unexpected error:', error);
+    console.error('[AutoRestore] Erro inesperado:', error);
   }
 }

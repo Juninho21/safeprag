@@ -17,6 +17,9 @@ export function Login() {
   const navigate = useNavigate();
   const authAvailable = Boolean(auth);
 
+  // Detecta plataforma para esconder botão Google no Android
+  const isAndroid = Capacitor.getPlatform() === 'android';
+
   useEffect(() => {
     // toast.dismiss(); // Limpa todos os toasts ao entrar na tela de login // Removido
     // Inicializa GoogleAuth (web/ios), no Android usa config do Capacitor
@@ -84,8 +87,10 @@ export function Login() {
       if (Capacitor.getPlatform() === 'android') {
         // Login nativo com Google dentro do app (sem navegador)
         const googleUser = await GoogleAuth.signIn();
+        console.log('[GoogleAuth] user', googleUser);
         const idToken = googleUser?.authentication?.idToken;
         const accessToken = googleUser?.authentication?.accessToken;
+        console.log('[GoogleAuth] tokens', { idToken: Boolean(idToken), accessToken: Boolean(accessToken) });
 
         if (!idToken && !accessToken) {
           throw new Error('Não foi possível obter token do Google');
@@ -102,6 +107,7 @@ export function Login() {
       }
     } catch (err: any) {
       const message = err?.message || 'Erro ao entrar com Google.';
+      console.error('[GoogleAuth] signIn error', { code: err?.code, message }, err);
       setError(message);
     } finally {
       setLoading(false);
@@ -187,15 +193,18 @@ export function Login() {
             Esqueci a senha
           </button>
 
-          <button
-            type="button"
-            onClick={handleGoogleLogin}
-            disabled={loading || !authAvailable}
-            className="w-full flex items-center justify-center gap-3 py-2 px-4 border border-gray-300 rounded-md bg-white hover:bg-gray-50 text-gray-700 shadow-sm disabled:opacity-50"
-          >
-            <FcGoogle size={20} />
-            {loading ? 'Aguarde...' : 'Entrar com Google'}
-          </button>
+          {/* Oculta o botão do Google no Android */}
+          {!isAndroid && (
+            <button
+              type="button"
+              onClick={handleGoogleLogin}
+              disabled={loading || !authAvailable}
+              className="w-full flex items-center justify-center gap-3 py-2 px-4 border border-gray-300 rounded-md bg-white hover:bg-gray-50 text-gray-700 shadow-sm disabled:opacity-50"
+            >
+              <FcGoogle size={20} />
+              {loading ? 'Aguarde...' : 'Entrar com Google'}
+            </button>
+          )}
           
           {/* Link de cadastro removido */}
         </form>

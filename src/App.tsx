@@ -20,6 +20,7 @@ import { getActiveServiceOrder, approveServiceOrder, updateScheduleStatus, finis
 // import { toast } from 'react-toastify'; // Removido
 import { fileSharingService } from './services/fileSharingService';
 import { v4 as uuidv4 } from 'uuid';
+import { STORAGE_KEYS } from './services/storageKeys';
 // Removido: import de dados de exemplo
 
 interface State {
@@ -633,7 +634,132 @@ function App() {
   const canFinishOS = useCallback(() => {
     // Obter a lista de serviços do componente ServiceActivity
     const serviceActivityElement = document.querySelector('div[data-service-list]');
-    let serviceList = [];
+    let serviceList: any[] = [];
+
+    // Helper: valida contagens de pragas obrigatórias nas regras da Contagem por Dispositivo
+    const checkPestCountsRequirement = () => {
+      try {
+        const eligibleDevices = (state.savedDevices || []).filter((device: any) => {
+          const status = device.status;
+          const statusList = Array.isArray(status) ? status : (status ? [status] : []);
+          const hasEligibleStatus =
+            statusList.includes('Refil substituído') ||
+            statusList.includes('Atrativo biológico substituído') ||
+            statusList.includes('Praga encontrada');
+          return hasEligibleStatus && !statusList.includes('inativo');
+        }).map((device: any) => ({
+          deviceType: device.type,
+          deviceNumber: (device as any).number ?? device.id
+        }));
+
+        if (eligibleDevices.length === 0) {
+          return true; // Nenhum dispositivo exige contagem
+        }
+
+        // Consolidar possíveis fontes de contagens no localStorage (compatibilidade)
+        let counts: any[] = [];
+
+        const tryParseArray = (str: string | null) => {
+          if (!str) return null;
+          try {
+            const parsed = JSON.parse(str);
+            return Array.isArray(parsed) ? parsed : null;
+          } catch {
+            return null;
+          }
+        };
+
+        const candidateKeys = [
+          STORAGE_KEYS.PEST_COUNTS,
+          'pestCounts',
+          'safeprag_pest_counts',
+          'pest_counts',
+          'safeprag_pest_count_data'
+        ];
+
+        for (const key of candidateKeys) {
+          const parsed = tryParseArray(localStorage.getItem(key));
+          if (parsed && parsed.length) {
+            counts = parsed;
+            break;
+          }
+        }
+
+        // Buscar da ordem de serviço ativa
+        if (counts.length === 0) {
+          const activeOrderStr = localStorage.getItem('active_service_order');
+          if (activeOrderStr) {
+            try {
+              const activeOrder = JSON.parse(activeOrderStr);
+              if (activeOrder?.pestCounts && Array.isArray(activeOrder.pestCounts)) {
+                counts = activeOrder.pestCounts;
+              }
+            } catch {}
+          }
+        }
+
+        // Buscar das ordens de serviço salvas
+        if (counts.length === 0) {
+          const ordersStr = localStorage.getItem(STORAGE_KEYS.SERVICE_ORDERS);
+          if (ordersStr) {
+            try {
+              const orders = JSON.parse(ordersStr);
+              let foundCounts: any[] | null = null;
+              let foundOrderId: string | null = null;
+
+              const inProgress = Array.isArray(orders) ? orders.find((o: any) => o.status === 'in_progress') : null;
+              if (inProgress?.pestCounts && Array.isArray(inProgress.pestCounts)) {
+                foundCounts = inProgress.pestCounts;
+                foundOrderId = inProgress.id;
+              } else if (Array.isArray(orders)) {
+                const anyWith = orders.find((o: any) => o.pestCounts && Array.isArray(o.pestCounts));
+                if (anyWith) {
+                  foundCounts = anyWith.pestCounts;
+                  foundOrderId = anyWith.id;
+                }
+              }
+
+              if (foundCounts) {
+                counts = foundCounts;
+              }
+
+              // Chave específica por OS (compatibilidade)
+              if (counts.length === 0 && foundOrderId) {
+                const specific = tryParseArray(localStorage.getItem(`pestCounts_${foundOrderId}`));
+                if (specific) counts = specific;
+              }
+            } catch {}
+          }
+        }
+
+        // Buscar em ordens em andamento (compatibilidade)
+        if (counts.length === 0) {
+          const ongoingStr = localStorage.getItem('ongoing_service_orders');
+          if (ongoingStr) {
+            try {
+              const ongoingOrders = JSON.parse(ongoingStr);
+              if (Array.isArray(ongoingOrders)) {
+                const current = ongoingOrders.find((o: any) => o.pestCounts && Array.isArray(o.pestCounts));
+                if (current) counts = current.pestCounts;
+              }
+            } catch {}
+          }
+        }
+
+        const allCounted = eligibleDevices.every(d =>
+          counts.some(c => c.deviceType === d.deviceType && String(c.deviceNumber) === String(d.deviceNumber))
+        );
+
+        if (!allCounted) {
+          console.log('Contagem de pragas pendente em dispositivos:', { eligibleDevices, counts });
+        }
+
+        return allCounted;
+      } catch (err) {
+        console.error('Erro ao validar contagem de pragas:', err);
+        return false;
+      }
+    };
     
     if (serviceActivityElement && serviceActivityElement.getAttribute('data-service-list')) {
       try {
@@ -658,6 +784,11 @@ function App() {
         // Para monitoramento, verificar se há dispositivos selecionados
         if (serviceType === 'monitoramento' && state.savedDevices.length === 0) {
           console.log('Monitoramento sem dispositivos selecionados');
+          return false;
+        }
+
+        // Regra de negócio: exigir contagem de pragas em todos os dispositivos elegíveis
+        if (!checkPestCountsRequirement()) {
           return false;
         }
         
@@ -685,10 +816,15 @@ function App() {
         console.log('Monitoramento sem dispositivos selecionados');
         return false;
       }
+
+      // Regra de negócio: exigir contagem de pragas em todos os dispositivos elegíveis
+      if (!checkPestCountsRequirement()) {
+        return false;
+      }
     } else {
       console.log('Verificando lista de serviços:', serviceList);
       // Verificar se pelo menos um serviço na lista tem os campos obrigatórios preenchidos
-      const hasValidService = serviceList.some(service => {
+      const hasValidService = serviceList.some((service: any) => {
         // Verificar campos obrigatórios
         if (!service.serviceType || !service.targetPest) {
           console.log('Serviço sem campos obrigatórios:', service);
@@ -709,11 +845,16 @@ function App() {
         console.log('Nenhum serviço válido encontrado');
         return false;
       }
+
+      // Regra de negócio: exigir contagem de pragas em todos os dispositivos elegíveis
+      if (!checkPestCountsRequirement()) {
+        return false;
+      }
     }
     
     console.log('Todos os requisitos atendidos, OS pode ser finalizada');
     return true;
-  }, [serviceType, targetPest, isTreatmentService, state.selectedProduct, state.savedDevices.length]);
+  }, [serviceType, targetPest, isTreatmentService, state.selectedProduct, state.savedDevices]);
 
   const handleFinishOS = useCallback(async () => {
     if (!state.startTime) {

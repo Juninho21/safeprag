@@ -108,6 +108,29 @@ const ServiceActivity: React.FC<ServiceActivityProps> = ({
   const [showRetroactiveModal, setShowRetroactiveModal] = useState(false);
   const [showPestCountingModal, setShowPestCountingModal] = useState(false);
   
+  // Botão 'Contagem de Pragas' piscando em verde por 15s quando houver dispositivos elegíveis
+  const [flashPestButton, setFlashPestButton] = useState(false);
+
+  useEffect(() => {
+    const hasDevices = (state.savedDevices || []).some((device: any) => {
+      const status = device.status;
+      const statusList = Array.isArray(status) ? status : (status ? [status] : []);
+      const hasEligibleStatus =
+        statusList.includes('Refil substituído') ||
+        statusList.includes('Atrativo biológico substituído') ||
+        statusList.includes('Praga encontrada');
+      return hasEligibleStatus && !statusList.includes('inativo');
+    });
+
+    if (hasDevices) {
+      setFlashPestButton(true);
+      const timer = setTimeout(() => setFlashPestButton(false), 15000);
+      return () => clearTimeout(timer);
+    } else {
+      setFlashPestButton(false);
+    }
+  }, [state.savedDevices]);
+  
   // Estado para gerenciar múltiplos serviços
   const [serviceList, setServiceList] = useState<ServiceListItem[]>([]);
   
@@ -980,9 +1003,9 @@ const ServiceActivity: React.FC<ServiceActivityProps> = ({
                   }
                   setShowPestCountingModal(true);
                 }}
-                className="w-full sm:w-auto px-4 py-3 sm:py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-blue-500 font-medium text-center"
-              >
-                Contagem de Pragas
+                className={"w-full sm:w-auto px-4 py-3 sm:py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-blue-500 font-medium text-center " + (flashPestButton ? "animate-blink-yellow" : "")}
+               >
+                 Contagem de Pragas
               </button>
             </div>
           </div>
@@ -1196,29 +1219,7 @@ const ServiceActivity: React.FC<ServiceActivityProps> = ({
         </div>
       )}
 
-      {/* Resumo das contagens de pragas (sempre visível) */}
-      {pestCounts.length > 0 && (
-        <div className="mt-8 border-t pt-6">
-          <div className="mt-4 bg-gray-50 p-4 rounded-lg border border-gray-200">
-            <h3 className="text-lg font-semibold text-gray-700 mb-3">Resumo de Contagem de Pragas</h3>
-            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3 sm:gap-4">
-              {pestCounts.map((item, index) => (
-                <div key={index} className="bg-white p-3 rounded-md shadow-sm">
-                  <h4 className="font-medium text-gray-800">{item.deviceType} {item.deviceNumber}</h4>
-                  <ul className="mt-2 space-y-1">
-                    {item.pests.map((pest, pestIndex) => (
-                      <li key={pestIndex} className="text-sm text-gray-600 flex justify-between">
-                        <span>{pest.name}</span>
-                        <span className="font-medium">{pest.count}</span>
-                      </li>
-                    ))}
-                  </ul>
-                </div>
-              ))}
-            </div>
-          </div>
-        </div>
-      )}
+
     </div>
   );
 };

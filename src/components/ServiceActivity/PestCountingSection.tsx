@@ -65,27 +65,7 @@ export const PestCountingSection: React.FC<PestCountingSectionProps> = ({
         </div>
       )}
 
-      {/* Resumo das contagens (sempre visível) */}
-      {!showPestCounting && pestCounts.length > 0 && (
-        <div className="mt-4 bg-gray-50 p-4 rounded-lg border border-gray-200">
-          <h3 className="text-lg font-semibold text-gray-700 mb-3">Resumo de Contagem de Pragas</h3>
-          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-            {pestCounts.map((item, index) => (
-              <div key={index} className="bg-white p-3 rounded-md shadow-sm">
-                <h4 className="font-medium text-gray-800">{item.deviceType} {item.deviceNumber}</h4>
-                <ul className="mt-2 space-y-1">
-                  {item.pests.map((pest, pestIndex) => (
-                    <li key={pestIndex} className="text-sm text-gray-600 flex justify-between">
-                      <span>{pest.name}</span>
-                      <span className="font-medium">{pest.count}</span>
-                    </li>
-                  ))}
-                </ul>
-              </div>
-            ))}
-          </div>
-        </div>
-      )}
+
     </div>
   );
 };
