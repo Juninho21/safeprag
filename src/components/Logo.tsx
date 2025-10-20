@@ -1,5 +1,4 @@
 import React, { useState, useEffect } from 'react';
-import { getCompany } from '../services/companyService';
 
 interface LogoProps {
   className?: string;
@@ -15,14 +14,21 @@ export const Logo: React.FC<LogoProps> = ({
   const [logoUrl, setLogoUrl] = useState<string>('');
   
   useEffect(() => {
-    // Carregar logo do backup
-    const companyData = getCompany();
-    if (companyData?.logo_url) {
-      setLogoUrl(companyData.logo_url);
-    } else {
-      // Fallback para logo padrão na pasta public
-      setLogoUrl('/logo.png');
-    }
+    const controller = new AbortController();
+    const loadLogo = async () => {
+      try {
+        const res = await fetch('/latest-backup.json', { cache: 'no-store', signal: controller.signal });
+        if (!res.ok) throw new Error(`HTTP ${res.status}`);
+        const data = await res.json();
+        const url = data?.COMPANY?.logo_url;
+        setLogoUrl(typeof url === 'string' && url.length > 0 ? url : '/safeprag_logo.png');
+      } catch (err) {
+        console.error('Erro ao buscar logo de latest-backup.json:', err);
+        setLogoUrl('/safeprag_logo.png');
+      }
+    };
+    loadLogo();
+    return () => controller.abort();
   }, []);
 
   const sizeClasses = {
@@ -35,26 +41,25 @@ export const Logo: React.FC<LogoProps> = ({
 
   const handleImageError = (e: React.SyntheticEvent<HTMLImageElement, Event>) => {
     console.error('Erro ao carregar logo:', e);
-    const target = e.target as HTMLImageElement;
-    target.style.display = 'none';
-    
-    // Criar fallback de texto
-    const textLogo = document.createElement('h1');
-    textLogo.className = `mx-auto text-2xl font-bold text-blue-600 ${size === '2xl' ? 'text-4xl' : size === 'xl' ? 'text-3xl' : size === 'lg' ? 'text-2xl' : 'text-xl'} mb-4`;
-    textLogo.textContent = 'Sulpest';
-    target.parentNode?.insertBefore(textLogo, target);
+    // Em caso de erro no logo do JSON, usar o logo padrão Safeprag
+    if (logoUrl !== '/safeprag_logo.png') {
+      setLogoUrl('/safeprag_logo.png');
+    }
   };
 
-  // Se não há logo definido, mostrar apenas texto
+  // Se não há logo carregado ainda, exibir logo padrão Safeprag
   if (!logoUrl) {
     return (
       <div className={`text-center ${className}`}>
-        <h1 className={`mx-auto text-2xl font-bold text-blue-600 ${size === '2xl' ? 'text-4xl' : size === 'xl' ? 'text-3xl' : size === 'lg' ? 'text-2xl' : 'text-xl'} mb-4`}>
-          Sulpest
-        </h1>
+        <img
+          className={`mx-auto ${sizeClasses[size]}`}
+          src={'/safeprag_logo.png'}
+          alt="Safeprag Logo"
+          onError={handleImageError}
+        />
         {showText && (
           <h2 className="mt-2 text-lg font-semibold text-gray-700">
-            Sulpest
+            Safeprag
           </h2>
         )}
       </div>
@@ -66,12 +71,12 @@ export const Logo: React.FC<LogoProps> = ({
       <img
         className={`mx-auto ${sizeClasses[size]}`}
         src={logoUrl}
-        alt="Sulpest Logo"
+        alt="Safeprag Logo"
         onError={handleImageError}
       />
       {showText && (
         <h2 className="mt-2 text-lg font-semibold text-gray-700">
-          Sulpest
+          Safeprag
         </h2>
       )}
     </div>
