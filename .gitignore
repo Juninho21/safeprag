@@ -30,3 +30,10 @@ dist-ssr
 
 # Firebase Admin service account (do not commit secrets)
 server/serviceAccountKey.json
+ 
+# Android / Mobile builds
+*.apk
+*.aab
+android/app/build/
+android/build/
+android/.gradle/
