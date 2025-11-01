@@ -17,18 +17,20 @@ export function Login() {
   const navigate = useNavigate();
   const authAvailable = Boolean(auth);
 
-  // Detecta plataforma para esconder botão Google no Android
+  // Detecta plataforma (mantemos para escolher fluxo, mas não ocultar botão)
   const isAndroid = Capacitor.getPlatform() === 'android';
 
   useEffect(() => {
-    // toast.dismiss(); // Limpa todos os toasts ao entrar na tela de login // Removido
-    // Inicializa GoogleAuth (web/ios), no Android usa config do Capacitor
     try {
+      const webClientId = (import.meta.env.VITE_GOOGLE_WEB_CLIENT_ID || '').trim() || '759964931590-iiigm5did69ttrjj98unt5pl15ardtb2.apps.googleusercontent.com';
+      // Inicializa GoogleAuth em todas as plataformas (Android/web) para evitar erro "initialize() first".
       GoogleAuth.initialize({
         scopes: ['profile', 'email'],
-        serverClientId: import.meta.env.VITE_GOOGLE_WEB_CLIENT_ID
+        clientId: webClientId
       });
-    } catch {}
+    } catch (e) {
+      console.warn('[GoogleAuth] falha ao inicializar', e);
+    }
   }, []);
 
   const handleLogin = async (e: React.FormEvent) => {
@@ -84,7 +86,18 @@ export function Login() {
         setError('Autenticação não configurada. Configure o Firebase para habilitar login.');
         return;
       }
-      if (Capacitor.getPlatform() === 'android') {
+      if (isAndroid) {
+        // Garante initialize() antes do signIn no Android
+        const webClientId = (import.meta.env.VITE_GOOGLE_WEB_CLIENT_ID || '').trim() || '759964931590-iiigm5did69ttrjj98unt5pl15ardtb2.apps.googleusercontent.com';
+        try {
+          await GoogleAuth.initialize({
+            scopes: ['profile', 'email'],
+            clientId: webClientId
+          });
+        } catch (initErr) {
+          console.warn('[GoogleAuth] initialize (android) erro', initErr);
+        }
+
         // Login nativo com Google dentro do app (sem navegador)
         const googleUser = await GoogleAuth.signIn();
         console.log('[GoogleAuth] user', googleUser);
@@ -106,9 +119,22 @@ export function Login() {
         navigate('/');
       }
     } catch (err: any) {
-      const message = err?.message || 'Erro ao entrar com Google.';
-      console.error('[GoogleAuth] signIn error', { code: err?.code, message }, err);
-      setError(message);
+      const rawCode = err?.code ?? err?.status ?? err?.error ?? '';
+      const codeStr = String(rawCode || '').trim();
+      let message = err?.message || 'Erro ao entrar com Google.';
+
+      // Mapeia códigos comuns do Google Play Services
+      // 10: DEVELOPER_ERROR (configuração OAuth/cliente), 12501: SIGN_IN_CANCELLED, 12500: SIGN_IN_FAILED
+      if (codeStr === '10' || message.includes('statusCode=10') || message.includes('DEVELOPER_ERROR')) {
+        message = 'Falha de configuração do Google Sign-In (código 10). Verifique SHA-1 do app, o clientId e usuários de teste na tela de consentimento.';
+      } else if (codeStr === '12501') {
+        message = 'Login cancelado pelo usuário (código 12501). Tente novamente.';
+      } else if (codeStr === '12500') {
+        message = 'Não foi possível concluir o login Google (código 12500). Atualize o Google Play Services e tente novamente.';
+      }
+
+      console.error('[GoogleAuth] signIn error', { code: codeStr || rawCode, message }, err);
+      setError(codeStr ? `${message} (código: ${codeStr})` : message);
     } finally {
       setLoading(false);
     }
@@ -193,18 +219,16 @@ export function Login() {
             Esqueci a senha
           </button>
 
-          {/* Oculta o botão do Google no Android */}
-          {!isAndroid && (
-            <button
-              type="button"
-              onClick={handleGoogleLogin}
-              disabled={loading || !authAvailable}
-              className="w-full flex items-center justify-center gap-3 py-2 px-4 border border-gray-300 rounded-md bg-white hover:bg-gray-50 text-gray-700 shadow-sm disabled:opacity-50"
-            >
-              <FcGoogle size={20} />
-              {loading ? 'Aguarde...' : 'Entrar com Google'}
-            </button>
-          )}
+          {/* Botão do Google visível em todas as plataformas */}
+          <button
+            type="button"
+            onClick={handleGoogleLogin}
+            disabled={loading || !authAvailable}
+            className="w-full flex items-center justify-center gap-3 py-2 px-4 border border-gray-300 rounded-md bg-white hover:bg-gray-50 text-gray-700 shadow-sm disabled:opacity-50"
+          >
+            <FcGoogle size={20} />
+            {loading ? 'Aguarde...' : 'Entrar com Google'}
+          </button>
           
           {/* Link de cadastro removido */}
         </form>

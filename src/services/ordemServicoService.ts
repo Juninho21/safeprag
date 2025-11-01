@@ -355,6 +355,15 @@ export const finishServiceOrder = async (orderId: string): Promise<void> => {
       };
       
       console.log('📄 Dados do PDF preparados:', pdfData);
+
+      // Gerar e salvar o PDF para aparecer na página de Downloads
+      try {
+        const { generateAndShareServiceOrderPDF } = await import('./pdfService');
+        await generateAndShareServiceOrderPDF(pdfData as any, false); // apenas gerar e salvar, sem compartilhar
+        console.log('✅ PDF da OS gerado e salvo no IndexedDB');
+      } catch (pdfError) {
+        console.error('Erro ao gerar/salvar PDF da OS:', pdfError);
+      }
     } catch (error) {
       console.error('Erro ao processar dados do PDF:', error);
       // Continua a execução mesmo se houver erro ao processar o PDF

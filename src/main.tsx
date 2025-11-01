@@ -7,6 +7,13 @@ import { SchedulingProvider } from './contexts/SchedulingContext';
 import { AuthProvider } from './contexts/AuthContext';
 import './index.css';
 import { autoRestoreOnStartup } from './services/autoRestore';
+import { registerSW } from 'virtual:pwa-register';
+
+const updateSW = registerSW({
+  onOfflineReady() {
+    console.log('[PWA] Aplicativo pronto para uso offline');
+  },
+});
 
 // Aguarda a auto-restauração antes de renderizar a aplicação
 (async () => {

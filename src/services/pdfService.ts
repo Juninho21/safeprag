@@ -469,7 +469,7 @@ export const generateServiceOrderPDF = async (
     const style = document.createElement('style');
     style.textContent = `
       @page {
-        margin: 10mm 10mm 24mm 10mm;
+        margin: 10mm 10mm 10mm 10mm;
       }
       .report-container {
         padding: 0;
@@ -486,8 +486,13 @@ export const generateServiceOrderPDF = async (
       table {
         margin: 0;
         padding: 0;
-        /* permitir que a tabela quebre entre páginas */
+        /* permitir que a tabela quebre entre páginas por padrão */
         page-break-inside: auto;
+      }
+      /* Wrapper de cada bloco de tabela da contagem de pragas: nunca quebrar dentro */
+      .table-wrapper {
+        page-break-inside: avoid;
+        break-inside: avoid;
       }
       /* Evitar cortes dentro de cada linha da tabela, permitindo que a própria tabela quebre entre páginas e repetindo cabeçalho */
       thead { display: table-header-group !important; page-break-after: avoid; break-after: avoid; }
@@ -529,6 +534,11 @@ export const generateServiceOrderPDF = async (
         text-align: center;
         vertical-align: middle;
         line-height: 1.2;
+      }
+      /* Não permitir corte dentro da tabela de contagem de pragas */
+      .pest-count-table {
+        page-break-inside: avoid !important;
+        break-inside: avoid !important;
       }
     `;
     document.head.appendChild(style);
@@ -681,13 +691,19 @@ export const generateServiceOrderPDF = async (
           </tr>
         </thead>
         <tbody>
-          ${servicesToRender.map(service => service && service.type && service.target && service.location ? `
-            <tr>
-              <td style="padding: 8px 3px; border: 1px solid #ddd; text-align: center; vertical-align: middle;">${service.type.charAt(0).toUpperCase() + service.type.slice(1)}</td>
-              <td style="padding: 8px 3px; border: 1px solid #ddd; text-align: center; vertical-align: middle;">${service.target.charAt(0).toUpperCase() + service.target.slice(1)}</td>
-              <td style="padding: 8px 3px; border: 1px solid #ddd; text-align: center; vertical-align: middle;">${service.location}</td>
-            </tr>
-          ` : '').join('')}
+          ${servicesToRender.map(service => {
+            if (service && service.type && service.target && service.location) {
+              const formattedType = (service.type || '').replace(/_/g, ' ').replace(/\s+/g, ' ').trim();
+              return `
+                <tr>
+                  <td style="padding: 8px 3px; border: 1px solid #ddd; text-align: center; vertical-align: middle;">${formattedType.charAt(0).toUpperCase() + formattedType.slice(1)}</td>
+                  <td style="padding: 8px 3px; border: 1px solid #ddd; text-align: center; vertical-align: middle;">${service.target.charAt(0).toUpperCase() + service.target.slice(1)}</td>
+                  <td style="padding: 8px 3px; border: 1px solid #ddd; text-align: center; vertical-align: middle;">${service.location}</td>
+                </tr>
+              `;
+            }
+            return '';
+          }).join('')}
         </tbody>
       </table>
     `;
@@ -703,13 +719,13 @@ export const generateServiceOrderPDF = async (
         <table style="width: 100%; border-collapse: collapse; font-size: 10px;">
           <thead>
             <tr style="background-color: #1a73e8; color: white;">
-              <th style="padding: 3px; text-align: center; border: 1px solid #ddd; vertical-align: middle;"><span style="transform: translateY(-6px); display: inline-block;">Produto (Concen.)</span></th>
+              <th style="padding: 3px; text-align: center; border: 1px solid #ddd; vertical-align: middle;"><span style="transform: translateY(-6px); display: inline-block;">Produto</span></th>
               <th style="padding: 3px; text-align: center; border: 1px solid #ddd; vertical-align: middle;"><span style="transform: translateY(-6px); display: inline-block;">Princípio Ativo</span></th>
               <th style="padding: 3px; text-align: center; border: 1px solid #ddd; vertical-align: middle;"><span style="transform: translateY(-6px); display: inline-block;">Grupo Químico</span></th>
               <th style="padding: 3px; text-align: center; border: 1px solid #ddd; vertical-align: middle;"><span style="transform: translateY(-6px); display: inline-block;">Registro</span></th>
               <th style="padding: 3px; text-align: center; border: 1px solid #ddd; vertical-align: middle;"><span style="transform: translateY(-6px); display: inline-block;">Lote</span></th>
               <th style="padding: 3px; text-align: center; border: 1px solid #ddd; vertical-align: middle;"><span style="transform: translateY(-6px); display: inline-block;">Validade</span></th>
-              <th style="padding: 3px; text-align: center; border: 1px solid #ddd; vertical-align: middle;"><span style="transform: translateY(-6px); display: inline-block;">Qtde.</span></th>
+              <th style="padding: 3px; text-align: center; border: 1px solid #ddd; vertical-align: middle;"><span style="transform: translateY(-6px); display: inline-block;">Quantidade</span></th>
               <th style="padding: 3px; text-align: center; border: 1px solid #ddd; vertical-align: middle;"><span style="transform: translateY(-6px); display: inline-block;">Diluente</span></th>
             </tr>
           </thead>
@@ -745,13 +761,13 @@ export const generateServiceOrderPDF = async (
         <table style="width: 100%; border-collapse: collapse; font-size: 10px;">
           <thead>
             <tr style="background-color: #1a73e8; color: white;">
-              <th style="padding: 3px; text-align: center; border: 1px solid #ddd; vertical-align: middle;"><span style="transform: translateY(-6px); display: inline-block;">Produto (Concen.)</span></th>
+              <th style="padding: 3px; text-align: center; border: 1px solid #ddd; vertical-align: middle;"><span style="transform: translateY(-6px); display: inline-block;">Produto</span></th>
               <th style="padding: 3px; text-align: center; border: 1px solid #ddd; vertical-align: middle;"><span style="transform: translateY(-6px); display: inline-block;">Princípio Ativo</span></th>
               <th style="padding: 3px; text-align: center; border: 1px solid #ddd; vertical-align: middle;"><span style="transform: translateY(-6px); display: inline-block;">Grupo Químico</span></th>
               <th style="padding: 3px; text-align: center; border: 1px solid #ddd; vertical-align: middle;"><span style="transform: translateY(-6px); display: inline-block;">Registro</span></th>
               <th style="padding: 3px; text-align: center; border: 1px solid #ddd; vertical-align: middle;"><span style="transform: translateY(-6px); display: inline-block;">Lote</span></th>
               <th style="padding: 3px; text-align: center; border: 1px solid #ddd; vertical-align: middle;"><span style="transform: translateY(-6px); display: inline-block;">Validade</span></th>
-              <th style="padding: 3px; text-align: center; border: 1px solid #ddd; vertical-align: middle;"><span style="transform: translateY(-6px); display: inline-block;">Qtde.</span></th>
+              <th style="padding: 3px; text-align: center; border: 1px solid #ddd; vertical-align: middle;"><span style="transform: translateY(-6px); display: inline-block;">Quantidade</span></th>
               <th style="padding: 3px; text-align: center; border: 1px solid #ddd; vertical-align: middle;"><span style="transform: translateY(-6px); display: inline-block;">Diluente</span></th>
             </tr>
           </thead>
@@ -880,7 +896,7 @@ export const generateServiceOrderPDF = async (
 
 
 
-    // Observações
+    // Observações (dinâmico e condicional)
     const observationsContainer = document.createElement('div');
     observationsContainer.style.marginBottom = '20px';
     // Evitar corte dentro de Observações e permitir que o conteúdo seguinte aproveite a mesma página
@@ -890,13 +906,15 @@ export const generateServiceOrderPDF = async (
     (observationsContainer.style as any).breakBefore = 'auto';
     observationsContainer.style.pageBreakAfter = 'auto';
     (observationsContainer.style as any).breakAfter = 'auto';
-    observationsContainer.innerHTML = `
-      <div style="background-color: #1a73e8; color: white; padding: 3px 10px; margin: 10px 0; font-size: 13px; text-align: left;"><span style="transform: translateY(-6px); display: inline-block;">Observações</span></div>
-      <div style="min-height: 80px; border: 1px solid #ddd; padding: 10px; margin-bottom: 20px;">
-        ${serviceData.observations || ''}
-      </div>
-    `;
-    complementarySection.appendChild(observationsContainer);
+    const obsText = (serviceData.observations || '').trim();
+    const hasObservations = obsText.length > 0;
+    if (hasObservations) {
+      observationsContainer.innerHTML = `
+        <div style="background-color: #1a73e8; color: white; padding: 3px 10px; margin: 6px 0; font-size: 13px; text-align: left;"><span style="transform: translateY(-6px); display: inline-block;">Observações</span></div>
+        <div style="border: 1px solid #ddd; padding: 1px 8px 12px 8px; margin-bottom: 6px; white-space: pre-line; word-break: break-word; line-height: 1.15; font-size: 11px; text-align: justify; hyphens: auto;">${obsText}</div>
+      `;
+      complementarySection.appendChild(observationsContainer);
+    }
 
     // Assinaturas
     const signaturesSection = document.createElement('div');
@@ -1131,16 +1149,40 @@ export const generateServiceOrderPDF = async (
           .pest-count-table tr, .pest-count-table td { page-break-inside: avoid; break-inside: avoid; }
           .pest-count-table thead { background-color: #1a73e8; color: white; }
           .pest-count-table { width: 100%; border-collapse: collapse; font-size: 10px; margin-bottom: 1px; table-layout: fixed; }
-          .pest-count-table th { padding: 3px; text-align: center; border: 1px solid #ddd; vertical-align: middle; line-height: 1.3; box-sizing: border-box; }
-          .pest-count-table td { padding: 8px 3px; text-align: center; border: 1px solid #ddd; vertical-align: middle; line-height: 1.3; box-sizing: border-box; word-break: break-word; }
+          /* Cabeçalho mantém altura moderada para legibilidade */
+          .pest-count-table th { padding: 3px; text-align: center; border: 1px solid #ddd; vertical-align: middle; line-height: 1.2; box-sizing: border-box; }
+          /* Linhas do corpo com altura reduzida ~50% */
+          .pest-count-table td { padding: 4px 3px; text-align: center; border: 1px solid #ddd; vertical-align: middle; line-height: 1.0; box-sizing: border-box; word-break: break-word; }
+          /* Células que usam rowspan (tipo/número) alinham no topo com leve respiro */
+          .pest-count-table td[rowspan] { vertical-align: top; padding-top: 6px; }
           .pest-count-table thead tr:first-child th[colspan="4"] { width: 100%; }
+          /* Variante compacta para aproveitar melhor o espaço quando necessário */
+          .pest-count-table.compact { font-size: 9.5px; }
+          .pest-count-table.compact th, .pest-count-table.compact td { padding: 2px 2px; line-height: 1.05; }
         `;
         pestCountSection.appendChild(styleEl);
+        // Anexar seção ao DOM (oculta) para medições corretas durante a construção
+        const stagingContainer = document.createElement('div');
+        stagingContainer.style.position = 'absolute';
+        stagingContainer.style.visibility = 'hidden';
+        stagingContainer.style.left = '-10000px';
+        stagingContainer.style.top = '0';
+        stagingContainer.style.width = '794px';
+        stagingContainer.appendChild(pestCountSection);
+        document.body.appendChild(stagingContainer);
         
         // Função que cria uma nova tabela com cabeçalho repetido
-        const createPestCountTable = () => {
+        const createPestCountTable = (compact: boolean = false) => {
           const tbl = document.createElement('table');
           tbl.className = 'pest-count-table';
+          // Proteção adicional contra corte da tabela na quebra de página
+          tbl.style.pageBreakInside = 'avoid';
+          (tbl.style as any).breakInside = 'avoid';
+          tbl.style.pageBreakBefore = 'auto';
+          (tbl.style as any).breakBefore = 'auto';
+          tbl.style.pageBreakAfter = 'auto';
+          (tbl.style as any).breakAfter = 'auto';
+          if (compact) tbl.classList.add('compact');
           tbl.innerHTML = '<colgroup>' +
             '<col style="width: 32%">' +
             '<col style="width: 18%">' +
@@ -1149,87 +1191,105 @@ export const generateServiceOrderPDF = async (
             '</colgroup>' +
             '<thead style="display: table-header-group; page-break-after: avoid; break-after: avoid; page-break-inside: avoid;">' +
             '<tr style="background-color: #1a73e8; color: white;">' +
-            '<th colspan="4" style="padding: 3px 8px; text-align: left; border: 1px solid #ddd; vertical-align: middle; line-height: 1.3;"><span style="transform: translateY(-6px); display: inline-block;">Contagem de Pragas por Dispositivo</span></th>' +
+            '<th colspan="4" style="padding: 3px 8px; text-align: left; border: 1px solid #ddd; vertical-align: middle; line-height: 1.2;"><span style="transform: translateY(-3px); display: inline-block;">Contagem de Pragas por Dispositivo</span></th>' +
             '</tr>' +
             '<tr style="background-color: #1a73e8; color: white;">' +
-            '<th style="padding: 8px 3px; text-align: center; border: 1px solid #ddd; vertical-align: middle; line-height: 1.3;"><span style="transform: translateY(-6px); display: inline-block;">Tipo de Dispositivo</span></th>' +
-            '<th style="padding: 8px 3px; text-align: center; border: 1px solid #ddd; vertical-align: middle; line-height: 1.3;"><span style="transform: translateY(-6px); display: inline-block;">Número Dispositivo</span></th>' +
-            '<th style="padding: 8px 3px; text-align: center; border: 1px solid #ddd; vertical-align: middle; line-height: 1.3;"><span style="transform: translateY(-6px); display: inline-block;">Tipo de Praga</span></th>' +
-            '<th style="padding: 8px 3px; text-align: center; border: 1px solid #ddd; vertical-align: middle; line-height: 1.3;"><span style="transform: translateY(-6px); display: inline-block;">Quantidade</span></th>' +
+            '<th style="padding: 4px 3px; text-align: center; border: 1px solid #ddd; vertical-align: middle; line-height: 1.0;"><span style="transform: translateY(-3px); display: inline-block;">Tipo de Dispositivo</span></th>' +
+            '<th style="padding: 4px 3px; text-align: center; border: 1px solid #ddd; vertical-align: middle; line-height: 1.0;"><span style="transform: translateY(-3px); display: inline-block;">Número Dispositivo</span></th>' +
+            '<th style="padding: 4px 3px; text-align: center; border: 1px solid #ddd; vertical-align: middle; line-height: 1.0;"><span style="transform: translateY(-3px); display: inline-block;">Tipo de Praga</span></th>' +
+            '<th style="padding: 4px 3px; text-align: center; border: 1px solid #ddd; vertical-align: middle; line-height: 1.0;"><span style="transform: translateY(-3px); display: inline-block;">Quantidade</span></th>' +
             '</tr></thead><tbody></tbody>';
           return tbl;
         };
         
         // Heurística para quebrar entre blocos de dispositivos evitando cortar linhas
-        const estimatedRowHeight = 15; // altura aproximada (padding reduzido 4+4 + line-height)
-         const headerHeight = 52; // cabeçalho tem 2 linhas (título + colunas)
+        const estimatedRowHeight = 12; // altura aproximada com padding reduzido (4px) e line-height menor
+        const headerHeight = 44; // cabeçalho com duas linhas mais compactas
         const pageHeightPx = 1122; // A4 @96dpi (aprox.)
-        const topBottomMargins = 120; // aproximado às margens reais (10mm topo + 15mm base)
+        const topBottomMargins = 114; // 10mm topo (~38px) + 20mm base (~76px) ≈ 114px
         const usablePageHeight = pageHeightPx - topBottomMargins;
-        const pageSafetyBuffer = 24; // margem de segurança reduzida para aproveitar mais espaço
-         const tableBottomMargin = 8; // margem inferior da tabela mais enxuta
-        const paginationReservePx = 12; // reserva mínima para paginação
-        let usedHeightOnPage = 0;
+        const pageSafetyBuffer = 0; // sem folga extra entre blocos
+        const tableBottomMargin = 4; // margem inferior mínima
+        const paginationReservePx = 8; // reserva pequena para numeração/rodapé
+        const pageBreakSpacerPx = 0; // não reservar espaço extra; usamos margem mínima dinâmica
+        // Medir espaço já ocupado antes da seção de pragas para melhor aproveitamento da página
+        const initialUsedHeightOnPage = (() => {
+          try {
+            const pre = document.createElement('div');
+            pre.className = 'report-container';
+            pre.style.position = 'absolute';
+            pre.style.visibility = 'hidden';
+            pre.style.left = '-10000px';
+            pre.style.top = '0';
+            pre.style.width = '794px'; // largura A4
+
+            // Seções anteriores ao bloco de pragas
+            const s1 = document.createElement('div');
+            s1.className = 'section-container';
+            s1.appendChild(header.cloneNode(true));
+            s1.appendChild(licensesContainer.cloneNode(true));
+            s1.appendChild(clientSection.cloneNode(true));
+            pre.appendChild(s1);
+
+            const s2 = document.createElement('div');
+            s2.className = 'section-container';
+            s2.appendChild(serviceSection.cloneNode(true));
+            s2.appendChild(servicesInfoSection.cloneNode(true));
+            s2.appendChild(serviceTable.cloneNode(true));
+            pre.appendChild(s2);
+
+            if (devicesSection) {
+              const s3 = document.createElement('div');
+              s3.className = 'section-container';
+              s3.appendChild(devicesSection.cloneNode(true));
+              pre.appendChild(s3);
+            }
+
+            document.body.appendChild(pre);
+            const totalHeight = pre.getBoundingClientRect().height;
+            document.body.removeChild(pre);
+            const remainder = totalHeight % usablePageHeight;
+            return remainder;
+          } catch (err) {
+            console.warn('Falha ao medir espaço restante antes da seção de pragas:', err);
+            return 0;
+          }
+        })();
+
+        let usedHeightOnPage = initialUsedHeightOnPage;
         let hasHeaderOnCurrentPage = false; // controla repetição do cabeçalho apenas quando há nova página
         
         serviceData.pestCounts.forEach(device => {
-          let currentTable = createPestCountTable();
-          let currentTbody = currentTable.querySelector('tbody')!;
-          // Se já houve cabeçalho nesta página, remove o thead para não repetir
-          if (hasHeaderOnCurrentPage) {
-            const currentThead = currentTable.querySelector('thead');
-            if (currentThead) currentThead.remove();
-          }
+          // Ignora dispositivos sem pragas
           if (!device.pests || device.pests.length === 0) return;
           const pestsWithCount = device.pests.filter(pest => pest.count > 0);
           if (pestsWithCount.length === 0) return;
-          
-          // Quebra inteligente em blocos mantendo rowspan por dispositivo.
-          // Dividimos as pragas em "fatias" que cabem na página atual e,
-          // quando necessário, inserimos uma quebra e retomamos com novo rowspan.
-          const ensurePageBreak = () => {
-            if (currentTbody.children.length > 0) {
-              const wrap = document.createElement('div');
-              wrap.className = 'table-wrapper';
-              wrap.appendChild(currentTable);
-              pestCountSection.appendChild(wrap);
-            }
-            const brk = document.createElement('div');
-            brk.className = 'html2pdf__page-break';
-            pestCountSection.appendChild(brk);
-            currentTable = createPestCountTable();
-            currentTbody = currentTable.querySelector('tbody')!;
-            usedHeightOnPage = 0;
-            hasHeaderOnCurrentPage = false;
-          };
-          
-          // Caixa oculta para medir altura real dos blocos
+
+          // Caixa oculta para medir altura real do bloco completo do dispositivo
           const measureBox = document.createElement('div');
           measureBox.style.position = 'absolute';
           measureBox.style.visibility = 'hidden';
           measureBox.style.left = '-10000px';
           measureBox.style.top = '0';
-          pestCountSection.appendChild(measureBox);
-          
-          let remaining = [...pestsWithCount];
-          
-          const measureChunkHeight = (rowsCount: number, includeHeader: boolean) => {
-            const tbl = createPestCountTable();
+          // Anexa ao container de staging para garantir que estilos sejam aplicados
+          stagingContainer.appendChild(measureBox);
+
+          const measureDeviceBlockHeight = (rowsCount: number, includeHeader: boolean, compact: boolean = false) => {
+            const tbl = createPestCountTable(compact);
             if (!includeHeader) {
               const thead = tbl.querySelector('thead');
               if (thead) thead.remove();
             }
             const tbody = tbl.querySelector('tbody')!;
-            const slice = remaining.slice(0, rowsCount);
-            slice.forEach((pest, idx) => {
+            pestsWithCount.slice(0, rowsCount).forEach((pest, idx) => {
               const tr = document.createElement('tr');
               let rowHtml = '';
               if (idx === 0) {
-                rowHtml += `<td rowspan="${rowsCount}" style="padding: 4px 3px; border: 1px solid #ddd; text-align: center; vertical-align: middle;">${device.deviceType || 'Armadilha luminosa'}</td>`;
-                rowHtml += `<td rowspan="${rowsCount}" style="padding: 4px 3px; border: 1px solid #ddd; text-align: center; vertical-align: middle;">${device.deviceNumber}</td>`;
+                rowHtml += `<td rowspan="${rowsCount}" style="padding: 4px 3px; border: 1px solid #ddd; text-align: center; vertical-align: top;"><span style="display:inline-block; transform: translateY(-5px);">${device.deviceType || 'Armadilha luminosa'}</span></td>`;
+                rowHtml += `<td rowspan="${rowsCount}" style="padding: 4px 3px; border: 1px solid #ddd; text-align: center; vertical-align: top;"><span style="display:inline-block; transform: translateY(-5px);">${device.deviceNumber}</span></td>`;
               }
-              rowHtml += `<td style="padding: 4px 3px; border: 1px solid #ddd; text-align: center; vertical-align: middle;">${pest.name}</td>`;
-              rowHtml += `<td style="padding: 4px 3px; border: 1px solid #ddd; text-align: center; vertical-align: middle;">${pest.count}</td>`;
+              rowHtml += `<td style="padding: 4px 3px; border: 1px solid #ddd; text-align: center; vertical-align: middle;"><span style="display:inline-block; transform: translateY(-5px);">${pest.name}</span></td>`;
+              rowHtml += `<td style="padding: 4px 3px; border: 1px solid #ddd; text-align: center; vertical-align: middle;"><span style="display:inline-block; transform: translateY(-5px);">${pest.count}</span></td>`;
               tr.innerHTML = rowHtml;
               tbody.appendChild(tr);
             });
@@ -1238,111 +1298,81 @@ export const generateServiceOrderPDF = async (
             measureBox.removeChild(tbl);
             return h;
           };
-          
-          while (remaining.length > 0) {
-            let includeHeader = (currentTbody.children.length === 0) && !hasHeaderOnCurrentPage;
-            // Busca binária para encontrar o máximo de linhas que cabem na página atual
-            let low = 1;
-            let high = remaining.length;
-            let best = 1;
-            while (low <= high) {
-              const mid = Math.floor((low + high) / 2);
-              const h = measureChunkHeight(mid, includeHeader);
-              if ((usedHeightOnPage + h + pageSafetyBuffer + tableBottomMargin + paginationReservePx) <= usablePageHeight) {
-                best = mid;
-                low = mid + 1;
-              } else {
-                high = mid - 1;
-              }
-            }
-            let rowsThisChunk = Math.max(1, best);
-            // Verificação final com buffer: se ficar no limite, recua uma linha
-            let testHeight = measureChunkHeight(rowsThisChunk, includeHeader);
-            while (rowsThisChunk > 1 && (usedHeightOnPage + testHeight + pageSafetyBuffer + tableBottomMargin + paginationReservePx) > usablePageHeight) {
-              rowsThisChunk -= 1;
-              testHeight = measureChunkHeight(rowsThisChunk, includeHeader);
-            }
-            // Fallback conservador: mantenha um espaço mínimo no rodapé
-            const minBottomWhitespace = 24; // px (reduzido para aproveitar o rodapé)
-            let remainingSpace = usablePageHeight - (usedHeightOnPage + testHeight + tableBottomMargin + paginationReservePx);
-            while (rowsThisChunk > 1 && remainingSpace < minBottomWhitespace) {
-              rowsThisChunk -= 1;
-              testHeight = measureChunkHeight(rowsThisChunk, includeHeader);
-              remainingSpace = usablePageHeight - (usedHeightOnPage + testHeight + tableBottomMargin + paginationReservePx);
-            }
 
-            // Proteção extra: se a margem restante ainda for pequena, quebra antes do bloco
-            const bottomClipGuard = 16; // px (reduzido)
-            const spaceAfterChunk = usablePageHeight - (usedHeightOnPage + testHeight + tableBottomMargin + paginationReservePx);
-            if (spaceAfterChunk < bottomClipGuard) {
-              ensurePageBreak();
+          // Decidir se cabe o bloco inteiro na página atual
+          let includeHeader = !hasHeaderOnCurrentPage; // cabeçalho apenas no primeiro bloco da página
+          let useCompactForThisBlock = false;
+          let blockHeight = measureDeviceBlockHeight(pestsWithCount.length, includeHeader);
+          const minBottomWhitespace = 8; // folga mínima dinâmica
+          const projectedTotal = usedHeightOnPage + blockHeight + tableBottomMargin + paginationReservePx;
+          const leftover = usablePageHeight - projectedTotal;
+          const needBreakBefore = projectedTotal > usablePageHeight || leftover < minBottomWhitespace;
+
+          if (needBreakBefore) {
+            // Tentar variante compacta para encaixar no final da página
+            const compactHeight = measureDeviceBlockHeight(pestsWithCount.length, includeHeader, true);
+            const compactProjected = usedHeightOnPage + compactHeight + tableBottomMargin + paginationReservePx;
+            const compactLeftover = usablePageHeight - compactProjected;
+            if (compactProjected <= usablePageHeight && compactLeftover >= 6) {
+              useCompactForThisBlock = true;
+              blockHeight = compactHeight;
+            } else {
+              // Quebra antes do bloco para mantê-lo inteiro na próxima página
+              const brk = document.createElement('div');
+              brk.className = 'html2pdf__page-break';
+              pestCountSection.appendChild(brk);
+              usedHeightOnPage = 0;
+              hasHeaderOnCurrentPage = false;
               includeHeader = true;
-              // Recalcular capacidade na nova página considerando cabeçalho
-              low = 1;
-              high = remaining.length;
-              best = 1;
-              while (low <= high) {
-                const mid2 = Math.floor((low + high) / 2);
-                const h2 = measureChunkHeight(mid2, includeHeader);
-                if ((usedHeightOnPage + h2 + pageSafetyBuffer + tableBottomMargin + paginationReservePx) <= usablePageHeight) {
-                  best = mid2;
-                  low = mid2 + 1;
-                } else {
-                  high = mid2 - 1;
-                }
-              }
-              rowsThisChunk = Math.max(1, best);
-              testHeight = measureChunkHeight(rowsThisChunk, includeHeader);
+              blockHeight = measureDeviceBlockHeight(pestsWithCount.length, includeHeader);
             }
+          }
 
-            // Se nenhuma linha cabe na página atual, força quebra antes de renderizar
-            if ((usedHeightOnPage + testHeight + pageSafetyBuffer + tableBottomMargin + paginationReservePx) > usablePageHeight && rowsThisChunk === 1) {
-              ensurePageBreak();
-              // Após a quebra, recalcula altura para a nova página
-              testHeight = measureChunkHeight(rowsThisChunk, true);
-            }
-            
-            // Renderiza o bloco com rowspan na primeira linha do chunk
-            remaining.slice(0, rowsThisChunk).forEach((pest, idx) => {
-              const tr = document.createElement('tr');
-              let rowHtml = '';
-              if (idx === 0) {
-                rowHtml += `<td rowspan="${rowsThisChunk}">${device.deviceType || 'Armadilha luminosa'}</td>`;
-                rowHtml += `<td rowspan="${rowsThisChunk}">${device.deviceNumber}</td>`;
-              }
-              rowHtml += `<td>${pest.name}</td>`;
-              rowHtml += `<td>${pest.count}</td>`;
-              tr.innerHTML = rowHtml;
-              currentTbody.appendChild(tr);
-            });
-            
-            const chunkHeight = measureChunkHeight(rowsThisChunk, includeHeader);
-            usedHeightOnPage += (chunkHeight + pageSafetyBuffer);
-            remaining = remaining.slice(rowsThisChunk);
-            
-            // Não quebra automaticamente; só quebra se o próximo bloco não couber
-            if (remaining.length > 0) {
-              const nextHeight = measureChunkHeight(1, false);
-              if ((usedHeightOnPage + nextHeight + pageSafetyBuffer + tableBottomMargin + paginationReservePx) > usablePageHeight) {
-                ensurePageBreak();
-              }
-            }
+          // Monta a tabela real do dispositivo (bloco indivisível)
+          const currentTable = createPestCountTable(useCompactForThisBlock);
+          if (!includeHeader) {
+            const thead = currentTable.querySelector('thead');
+            if (thead) thead.remove();
           }
-          
-          // Remove caixa de medição após processar dispositivo
+          const currentTbody = currentTable.querySelector('tbody')!;
+          pestsWithCount.forEach((pest, idx) => {
+            const tr = document.createElement('tr');
+            let rowHtml = '';
+            if (idx === 0) {
+              rowHtml += `<td rowspan="${pestsWithCount.length}"><span style="display:inline-block; transform: translateY(-5px);">${device.deviceType || 'Armadilha luminosa'}</span></td>`;
+              rowHtml += `<td rowspan="${pestsWithCount.length}"><span style="display:inline-block; transform: translateY(-5px);">${device.deviceNumber}</span></td>`;
+            }
+            rowHtml += `<td><span style="display:inline-block; transform: translateY(-5px);">${pest.name}</span></td>`;
+            rowHtml += `<td><span style="display:inline-block; transform: translateY(-5px);">${pest.count}</span></td>`;
+            tr.innerHTML = rowHtml;
+            currentTbody.appendChild(tr);
+          });
+
+          // Anexa o bloco/tabela do dispositivo
+          const wrap = document.createElement('div');
+          wrap.className = 'table-wrapper';
+          // Garantir que o bloco inteiro (wrapper + tabela) não seja dividido
+          wrap.style.pageBreakInside = 'avoid';
+          (wrap.style as any).breakInside = 'avoid';
+          wrap.style.pageBreakBefore = 'auto';
+          (wrap.style as any).breakBefore = 'auto';
+          wrap.style.pageBreakAfter = 'auto';
+          (wrap.style as any).breakAfter = 'auto';
+          wrap.appendChild(currentTable);
+          pestCountSection.appendChild(wrap);
+
+          // Atualiza estado de página atual usando altura real renderizada para evitar acumular erro
+          const actualBlockHeight = wrap.getBoundingClientRect().height;
+          usedHeightOnPage += actualBlockHeight + pageSafetyBuffer;
+          if (includeHeader) {
+            hasHeaderOnCurrentPage = true;
+          }
+
+          // Remover caixa de medição
           measureBox.remove();
-          
-          // Finaliza: anexa a tabela do dispositivo atual
-          if (currentTbody.children.length > 0) {
-            const wrap = document.createElement('div');
-            wrap.className = 'table-wrapper';
-            wrap.appendChild(currentTable);
-            pestCountSection.appendChild(wrap);
-            if (currentTable.querySelector('thead')) {
-              hasHeaderOnCurrentPage = true;
-            }
-          }
         });
+        // Remover container de staging após construir toda a seção
+        try { document.body.removeChild(stagingContainer); } catch {}
         
         // Log para debug das tabelas geradas
         console.log('Tabelas de contagem de pragas geradas (paginadas):', pestCountSection.innerHTML);
@@ -1379,6 +1409,7 @@ export const generateServiceOrderPDF = async (
     
     // Adicionar a seção de contagem de pragas ao relatório SOMENTE se houver pragas com contagem > 0
     if (pestCountSection && hasPestsWithCount) {
+      // Sem quebra forçada: o algoritmo interno decide se deve iniciar nova página
       reportSections.push(`<div class="section-container">
         ${pestCountSection.outerHTML}
       </div>`);
@@ -1387,10 +1418,75 @@ export const generateServiceOrderPDF = async (
       console.log('Seção de contagem de pragas não adicionada ao relatório: não há pragas com contagem positiva');
     }
     
-    // Adicionar seção complementar
-    reportSections.push(`<div class="section-container">
-      ${complementarySection.outerHTML}
-    </div>`);
+    // Adicionar seção complementar com blocos indivisíveis (Observações e Assinaturas)
+    {
+      const pageHeightPx = 1122; // A4 @96dpi (aprox.)
+      const topBottomMargins = 114; // 10mm topo (~38px) + 20mm base (~76px) ≈ 114px
+      const usablePageHeight = pageHeightPx - topBottomMargins;
+      const paginationReservePx = 8;
+      const minBottomWhitespace = 10;
+
+      // Medir altura acumulada até aqui para saber o restante na última página
+      const pre = document.createElement('div');
+      pre.className = 'report-container';
+      pre.style.position = 'absolute';
+      pre.style.visibility = 'hidden';
+      pre.style.left = '-10000px';
+      pre.style.top = '0';
+      pre.style.width = '794px';
+      // Seções já montadas
+      const s1 = document.createElement('div'); s1.className = 'section-container';
+      s1.appendChild(header.cloneNode(true));
+      s1.appendChild(licensesContainer.cloneNode(true));
+      s1.appendChild(clientSection.cloneNode(true));
+      pre.appendChild(s1);
+      const s2 = document.createElement('div'); s2.className = 'section-container';
+      s2.appendChild(serviceSection.cloneNode(true));
+      s2.appendChild(servicesInfoSection.cloneNode(true));
+      s2.appendChild(serviceTable.cloneNode(true));
+      pre.appendChild(s2);
+      if (devicesSection) { const s3 = document.createElement('div'); s3.className = 'section-container'; s3.appendChild(devicesSection.cloneNode(true)); pre.appendChild(s3); }
+      if (pestCountSection && hasPestsWithCount) { const s4 = document.createElement('div'); s4.className = 'section-container'; s4.appendChild(pestCountSection.cloneNode(true)); pre.appendChild(s4); }
+      document.body.appendChild(pre);
+      const totalHeightSoFar = pre.getBoundingClientRect().height;
+      document.body.removeChild(pre);
+      let remainder = totalHeightSoFar % usablePageHeight;
+
+      // Função utilitária para medir altura do bloco
+      const measureBlock = (el: HTMLElement) => {
+        const box = document.createElement('div');
+        box.className = 'section-container';
+        box.style.position = 'absolute'; box.style.visibility = 'hidden';
+        box.style.left = '-10000px'; box.style.top = '0'; box.style.width = '794px';
+        box.appendChild(el.cloneNode(true));
+        document.body.appendChild(box);
+        const h = box.getBoundingClientRect().height;
+        document.body.removeChild(box);
+        return h;
+      };
+
+      const obsHeight = hasObservations ? measureBlock(observationsContainer) : 0;
+      const needBreakBeforeObs = hasObservations ? ((remainder + obsHeight + paginationReservePx) > usablePageHeight || (usablePageHeight - (remainder + obsHeight + paginationReservePx)) < minBottomWhitespace) : false;
+      if (needBreakBeforeObs) { remainder = 0; }
+      if (hasObservations) {
+        remainder = (remainder + obsHeight + paginationReservePx) % usablePageHeight;
+      }
+
+      const signHeight = measureBlock(signaturesSection);
+      const needBreakBeforeSign = (remainder + signHeight + paginationReservePx) > usablePageHeight || (usablePageHeight - (remainder + signHeight + paginationReservePx)) < minBottomWhitespace;
+      if (needBreakBeforeSign) { remainder = 0; }
+
+      const finalComplementaryHTML = [
+        '<div class="section-container">',
+        (hasObservations && needBreakBeforeObs) ? '<div class="html2pdf__page-break"></div>' : '',
+        hasObservations ? observationsContainer.outerHTML : '',
+        needBreakBeforeSign ? '<div class="html2pdf__page-break"></div>' : '',
+        signaturesSection.outerHTML,
+        '</div>'
+      ].join('');
+
+      reportSections.push(finalComplementaryHTML);
+    }
     
     // Juntar todas as seções
     reportElement.innerHTML = reportSections.join('\n');
@@ -1410,7 +1506,7 @@ export const generateServiceOrderPDF = async (
 
     // Opções do PDF
     const pdfOptions = {
-      margin: [10, 10, 24, 10],
+      margin: [10, 10, 20, 10],
       filename: `ordem-servico-${serviceData.orderNumber}.pdf`,
       image: { type: 'jpeg', quality: 0.98 },
       html2canvas: {
@@ -1449,7 +1545,7 @@ export const generateServiceOrderPDF = async (
       pdf.text(
         `${i}/${totalPages}`,
         pageWidth - 12,
-        pageHeight - 2,
+        pageHeight - 4,
         { align: 'right' }
       );
     }
