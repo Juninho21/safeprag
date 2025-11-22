@@ -1,14 +1,13 @@
 import { createBrowserRouter, Navigate, Outlet } from 'react-router-dom';
 import { Layout } from '../components/Layout';
-import { SchedulingPage } from '../pages/Scheduling';
 import App from '../App';
 import { AdminPage } from '../components/AdminPage';
 // import { SupabaseIntegration } from '../pages/Admin/SupabaseIntegration';
 import { Login } from "../components/Login";
-import { useEffect } from 'react';
-import { useNavigate } from 'react-router-dom';
 import { ReactNode } from 'react';
 import { useAuth } from '../contexts/AuthContext';
+import { RequireRole } from '../components/Auth/RequireRole';
+import DownloadsManagement from '../components/ServiceOrders/DownloadsManagement';
 
 // Componente para layout principal (sem autenticação)
 const MainLayout = () => {
@@ -45,8 +44,17 @@ export const router = createBrowserRouter([
             element: <App />
           },
           {
+            path: 'downloads',
+            element: (
+              <RequireRole allow={["admin", "controlador", "cliente"]}>
+                <DownloadsManagement />
+              </RequireRole>
+            )
+          },
+          // Plano Mensal agora está dentro de Configurações do Sistema (AdminPage)
+          {
             path: 'configuracoes',
-            element: <AdminPage />,
+            element: <RequireRole allow={["admin"]}><AdminPage /></RequireRole>,
             children: [
               {
                 index: true,
@@ -54,27 +62,31 @@ export const router = createBrowserRouter([
               },
               {
                 path: 'empresa',
-                element: <AdminPage />
+                element: <RequireRole allow={["admin"]}><AdminPage /></RequireRole>
               },
               {
                 path: 'usuarios',
-                element: <AdminPage />
+                element: <RequireRole allow={["admin"]}><AdminPage /></RequireRole>
               },
               {
                 path: 'produtos',
-                element: <AdminPage />
+                element: <RequireRole allow={["admin"]}><AdminPage /></RequireRole>
               },
               {
                 path: 'assinaturas',
-                element: <AdminPage />
+                element: <RequireRole allow={["admin"]}><AdminPage /></RequireRole>
+              },
+              {
+                path: 'clientes',
+                element: <RequireRole allow={["admin"]}><AdminPage /></RequireRole>
               },
               {
                 path: 'downloads',
-                element: <AdminPage />
+                element: <RequireRole allow={["admin"]}><AdminPage /></RequireRole>
               },
               {
                 path: 'backup',
-                element: <AdminPage />
+                element: <RequireRole allow={["admin"]}><AdminPage /></RequireRole>
               }
             ]
           },

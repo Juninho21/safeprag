@@ -1,11 +1,11 @@
-import { 
-  collection, 
-  addDoc, 
-  getDocs, 
-  query, 
-  where, 
-  orderBy, 
-  limit, 
+import {
+  collection,
+  addDoc,
+  getDocs,
+  query,
+  where,
+  orderBy,
+  limit,
   startAfter,
   updateDoc,
   deleteDoc,
@@ -20,7 +20,7 @@ import {
 import { db } from '../config/firebase';
 
 // Interfaces
-interface Client {
+export interface Client {
   id?: string;
   code: string;
   branch: string;
@@ -37,7 +37,8 @@ interface Client {
   updatedAt?: Timestamp;
 }
 
-interface ServiceSchedule {
+export interface ServiceSchedule {
+  id?: string;
   clientCode: string;
   clientName: string;
   clientAddress: string;
@@ -48,16 +49,16 @@ interface ServiceSchedule {
   technician: string;
   notes: string;
   status: 'pending' | 'confirmed' | 'completed' | 'cancelled';
+  createdAt?: Timestamp;
+  updatedAt?: Timestamp;
 }
 
-const COLLECTION_NAME = 'clients';
-const SCHEDULE_COLLECTION_NAME = 'schedules';
 const PAGE_SIZE = 10;
 
 // Error handling
 const handleFirestoreError = (error: any): never => {
   console.error('Firestore Error:', error);
-  
+
   // Erros específicos do Firestore
   if (error.code) {
     switch (error.code) {
@@ -85,33 +86,44 @@ const withRetry = async <T>(
   delay: number = 1000
 ): Promise<T> => {
   let lastError;
-  
+
   for (let i = 0; i < maxRetries; i++) {
     try {
       return await operation();
     } catch (error: any) {
       lastError = error;
-      
+
       // Não tentar novamente em caso de erros de permissão
       if (error.code === 'permission-denied') {
         throw error;
       }
-      
+
       // Aguardar antes de tentar novamente
       if (i < maxRetries - 1) {
         await new Promise(resolve => setTimeout(resolve, delay * Math.pow(2, i)));
       }
     }
   }
-  
+
   throw lastError;
 };
 
-// Client Operations
-export const getNextClientCode = async (): Promise<string> => {
+// ===== CLIENT OPERATIONS =====
+
+/**
+ * Obter referência da coleção de clientes de uma empresa
+ */
+const getClientsCollection = (companyId: string) => {
+  return collection(db, 'companies', companyId, 'clients');
+};
+
+/**
+ * Busca o próximo código de cliente disponível
+ */
+export const getNextClientCode = async (companyId: string): Promise<string> => {
   return withRetry(async () => {
     try {
-      const clientsRef = collection(db, COLLECTION_NAME);
+      const clientsRef = getClientsCollection(companyId);
       const q = query(clientsRef, orderBy('code', 'desc'), limit(1));
       const snapshot = await getDocs(q);
 
@@ -128,10 +140,14 @@ export const getNextClientCode = async (): Promise<string> => {
   });
 };
 
-export const addClient = async (client: Client): Promise<string> => {
+/**
+ * Adiciona um novo cliente
+ */
+export const addClient = async (companyId: string, client: Client): Promise<string> => {
   return withRetry(async () => {
     try {
-      const docRef = await addDoc(collection(db, COLLECTION_NAME), {
+      const clientsRef = getClientsCollection(companyId);
+      const docRef = await addDoc(clientsRef, {
         ...client,
         createdAt: serverTimestamp(),
         updatedAt: serverTimestamp()
@@ -143,10 +159,13 @@ export const addClient = async (client: Client): Promise<string> => {
   });
 };
 
-export const updateClient = async (id: string, client: Partial<Client>): Promise<void> => {
+/**
+ * Atualiza um cliente existente
+ */
+export const updateClient = async (companyId: string, id: string, client: Partial<Client>): Promise<void> => {
   return withRetry(async () => {
     try {
-      const docRef = doc(db, COLLECTION_NAME, id);
+      const docRef = doc(db, 'companies', companyId, 'clients', id);
       await updateDoc(docRef, {
         ...client,
         updatedAt: serverTimestamp()
@@ -157,10 +176,13 @@ export const updateClient = async (id: string, client: Partial<Client>): Promise
   });
 };
 
-export const deleteClient = async (id: string): Promise<void> => {
+/**
+ * Deleta um cliente
+ */
+export const deleteClient = async (companyId: string, id: string): Promise<void> => {
   return withRetry(async () => {
     try {
-      const docRef = doc(db, COLLECTION_NAME, id);
+      const docRef = doc(db, 'companies', companyId, 'clients', id);
       await deleteDoc(docRef);
     } catch (error) {
       throw handleFirestoreError(error);
@@ -168,16 +190,19 @@ export const deleteClient = async (id: string): Promise<void> => {
   });
 };
 
-export const getClient = async (id: string): Promise<Client | null> => {
+/**
+ * Busca um cliente específico
+ */
+export const getClient = async (companyId: string, id: string): Promise<Client | null> => {
   return withRetry(async () => {
     try {
-      const docRef = doc(db, COLLECTION_NAME, id);
+      const docRef = doc(db, 'companies', companyId, 'clients', id);
       const docSnap = await getDoc(docRef);
-      
+
       if (docSnap.exists()) {
         return { id: docSnap.id, ...docSnap.data() } as Client;
       }
-      
+
       return null;
     } catch (error) {
       throw handleFirestoreError(error);
@@ -193,10 +218,13 @@ interface GetClientsOptions {
   orderDirection?: 'asc' | 'desc';
 }
 
-export const getClients = async (options: GetClientsOptions = {}): Promise<{ clients: Client[]; lastDoc: QueryDocumentSnapshot | null }> => {
+/**
+ * Lista clientes com paginação e busca
+ */
+export const getClients = async (companyId: string, options: GetClientsOptions = {}): Promise<{ clients: Client[]; lastDoc: QueryDocumentSnapshot | null }> => {
   return withRetry(async () => {
     try {
-      const clientsRef = collection(db, COLLECTION_NAME);
+      const clientsRef = getClientsCollection(companyId);
       let q = query(clientsRef);
 
       // Ordenação
@@ -216,7 +244,7 @@ export const getClients = async (options: GetClientsOptions = {}): Promise<{ cli
       if (options.lastDoc) {
         q = query(q, startAfter(options.lastDoc));
       }
-      
+
       q = query(q, limit(PAGE_SIZE));
 
       const snapshot = await getDocs(q);
@@ -234,8 +262,19 @@ export const getClients = async (options: GetClientsOptions = {}): Promise<{ cli
   });
 };
 
-// Service Schedule Operations
-export const addServiceSchedule = async (schedule: ServiceSchedule) => {
+// ===== SERVICE SCHEDULE OPERATIONS =====
+
+/**
+ * Obter referência da coleção de agendamentos de uma empresa
+ */
+const getSchedulesCollection = (companyId: string) => {
+  return collection(db, 'companies', companyId, 'schedules');
+};
+
+/**
+ * Adiciona um novo agendamento
+ */
+export const addServiceSchedule = async (companyId: string, schedule: ServiceSchedule) => {
   return withRetry(async () => {
     try {
       const scheduleData = {
@@ -244,7 +283,8 @@ export const addServiceSchedule = async (schedule: ServiceSchedule) => {
         updatedAt: serverTimestamp()
       };
 
-      const docRef = await addDoc(collection(db, SCHEDULE_COLLECTION_NAME), scheduleData);
+      const schedulesRef = getSchedulesCollection(companyId);
+      const docRef = await addDoc(schedulesRef, scheduleData);
       return docRef.id;
     } catch (error) {
       throw handleFirestoreError(error);
@@ -252,7 +292,10 @@ export const addServiceSchedule = async (schedule: ServiceSchedule) => {
   });
 };
 
-export const updateServiceSchedule = async (id: string, schedule: Partial<ServiceSchedule>) => {
+/**
+ * Atualiza um agendamento existente
+ */
+export const updateServiceSchedule = async (companyId: string, id: string, schedule: Partial<ServiceSchedule>) => {
   return withRetry(async () => {
     try {
       const scheduleData = {
@@ -260,7 +303,7 @@ export const updateServiceSchedule = async (id: string, schedule: Partial<Servic
         updatedAt: serverTimestamp()
       };
 
-      const scheduleRef = doc(db, SCHEDULE_COLLECTION_NAME, id);
+      const scheduleRef = doc(db, 'companies', companyId, 'schedules', id);
       await updateDoc(scheduleRef, scheduleData);
     } catch (error) {
       throw handleFirestoreError(error);
@@ -268,20 +311,28 @@ export const updateServiceSchedule = async (id: string, schedule: Partial<Servic
   });
 };
 
-export const deleteServiceSchedule = async (id: string) => {
+/**
+ * Deleta um agendamento
+ */
+export const deleteServiceSchedule = async (companyId: string, id: string) => {
   return withRetry(async () => {
     try {
-      await deleteDoc(doc(db, SCHEDULE_COLLECTION_NAME, id));
+      const scheduleRef = doc(db, 'companies', companyId, 'schedules', id);
+      await deleteDoc(scheduleRef);
     } catch (error) {
       throw handleFirestoreError(error);
     }
   });
 };
 
-export const getServiceSchedules = async () => {
+/**
+ * Lista todos os agendamentos
+ */
+export const getServiceSchedules = async (companyId: string) => {
   return withRetry(async () => {
     try {
-      const querySnapshot = await getDocs(collection(db, SCHEDULE_COLLECTION_NAME));
+      const schedulesRef = getSchedulesCollection(companyId);
+      const querySnapshot = await getDocs(schedulesRef);
       return querySnapshot.docs.map(doc => ({
         id: doc.id,
         ...doc.data()
@@ -292,15 +343,19 @@ export const getServiceSchedules = async () => {
   });
 };
 
-export const getServiceSchedulesByDate = async (date: string) => {
+/**
+ * Lista agendamentos por data
+ */
+export const getServiceSchedulesByDate = async (companyId: string, date: string) => {
   return withRetry(async () => {
     try {
+      const schedulesRef = getSchedulesCollection(companyId);
       const q = query(
-        collection(db, SCHEDULE_COLLECTION_NAME),
+        schedulesRef,
         where('date', '==', date),
         orderBy('time')
       );
-      
+
       const querySnapshot = await getDocs(q);
       return querySnapshot.docs.map(doc => ({
         id: doc.id,

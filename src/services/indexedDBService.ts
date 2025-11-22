@@ -10,6 +10,7 @@ interface PDFStorageItem {
   serviceType: string;
   clientCode?: string;
   services?: any[];
+  technicianName?: string;
 }
 
 class IndexedDBService {
@@ -34,7 +35,7 @@ class IndexedDBService {
         request.onsuccess = (event) => {
           this.db = (event.target as IDBOpenDBRequest).result;
           console.log('IndexedDB inicializado com sucesso');
-          
+
           // Migrar dados do localStorage para IndexedDB automaticamente
           this.migrateFromLocalStorage()
             .then(() => {
@@ -50,7 +51,7 @@ class IndexedDBService {
 
         request.onupgradeneeded = (event) => {
           const db = (event.target as IDBOpenDBRequest).result;
-          
+
           // Criar object store para PDFs se não existir
           if (!db.objectStoreNames.contains(this.storeName)) {
             const store = db.createObjectStore(this.storeName, { keyPath: 'orderNumber' });
@@ -77,14 +78,14 @@ class IndexedDBService {
       try {
         const transaction = this.db!.transaction([this.storeName], 'readwrite');
         const store = transaction.objectStore(this.storeName);
-        
+
         const request = store.put(pdfData);
-        
+
         request.onsuccess = () => {
           console.log('PDF armazenado com sucesso no IndexedDB:', pdfData.orderNumber);
           resolve(true);
         };
-        
+
         request.onerror = (event) => {
           console.error('Erro ao armazenar PDF no IndexedDB:', event);
           reject(new Error('Falha ao armazenar PDF no IndexedDB'));
@@ -108,14 +109,14 @@ class IndexedDBService {
       try {
         const transaction = this.db!.transaction([this.storeName], 'readonly');
         const store = transaction.objectStore(this.storeName);
-        
+
         const request = store.get(orderNumber);
-        
+
         request.onsuccess = () => {
           const result = request.result as PDFStorageItem;
           resolve(result || null);
         };
-        
+
         request.onerror = (event) => {
           console.error('Erro ao buscar PDF do IndexedDB:', event);
           reject(new Error('Falha ao buscar PDF do IndexedDB'));
@@ -139,14 +140,14 @@ class IndexedDBService {
       try {
         const transaction = this.db!.transaction([this.storeName], 'readonly');
         const store = transaction.objectStore(this.storeName);
-        
+
         const request = store.getAll();
-        
+
         request.onsuccess = () => {
           const results = request.result as PDFStorageItem[];
           resolve(results || []);
         };
-        
+
         request.onerror = (event) => {
           console.error('Erro ao buscar todos os PDFs do IndexedDB:', event);
           reject(new Error('Falha ao buscar PDFs do IndexedDB'));
@@ -170,14 +171,14 @@ class IndexedDBService {
       try {
         const transaction = this.db!.transaction([this.storeName], 'readwrite');
         const store = transaction.objectStore(this.storeName);
-        
+
         const request = store.delete(orderNumber);
-        
+
         request.onsuccess = () => {
           console.log('PDF excluído com sucesso do IndexedDB:', orderNumber);
           resolve(true);
         };
-        
+
         request.onerror = (event) => {
           console.error('Erro ao excluir PDF do IndexedDB:', event);
           reject(new Error('Falha ao excluir PDF do IndexedDB'));
@@ -192,29 +193,29 @@ class IndexedDBService {
   /**
    * Migra PDFs do localStorage para o IndexedDB
    */
-  async migrateFromLocalStorage(): Promise<{success: number, errors: number}> {
+  async migrateFromLocalStorage(): Promise<{ success: number, errors: number }> {
     try {
       console.log('Iniciando migração de PDFs do localStorage para IndexedDB');
-      
+
       // Obter PDFs do localStorage
       const storedPDFs = JSON.parse(localStorage.getItem('safeprag_service_order_pdfs') || '{}');
       const orderNumbers = Object.keys(storedPDFs);
-      
+
       if (orderNumbers.length === 0) {
         console.log('Nenhum PDF encontrado no localStorage para migração');
         return { success: 0, errors: 0 };
       }
-      
+
       console.log(`Encontrados ${orderNumbers.length} PDFs para migração`);
-      
+
       let successCount = 0;
       let errorCount = 0;
-      
+
       // Migrar cada PDF para o IndexedDB
       for (const orderNumber of orderNumbers) {
         try {
           const pdfData = storedPDFs[orderNumber];
-          
+
           // Armazenar no IndexedDB
           await this.storePDF({
             orderNumber,
@@ -225,7 +226,7 @@ class IndexedDBService {
             clientCode: pdfData.clientCode,
             services: pdfData.services
           });
-          
+
           successCount++;
           console.log(`PDF ${orderNumber} migrado com sucesso`);
         } catch (error) {
@@ -233,7 +234,7 @@ class IndexedDBService {
           console.error(`Erro ao migrar PDF ${orderNumber}:`, error);
         }
       }
-      
+
       console.log(`Migração concluída: ${successCount} sucesso, ${errorCount} erros`);
       return { success: successCount, errors: errorCount };
     } catch (error) {

@@ -49,17 +49,39 @@ export const storeServiceOrderPDF = (pdfBlob: Blob, serviceData: ServiceOrderPDF
     const reader = new FileReader();
     reader.onloadend = async () => {
       const base64PDF = (reader.result as string).split(',')[1];
-      
+
       // Determinar o tipo de serviço principal para exibição
       // Se houver múltiplos serviços, usa o primeiro da lista
       // Caso contrário, usa o serviço único (compatibilidade)
       const serviceType = serviceData.services && serviceData.services.length > 0
         ? serviceData.services[0].type
         : (serviceData.service ? serviceData.service.type : 'Serviço');
-      
+
+      // Obter nome do controlador de pragas usando a MESMA lógica do PDF
+      // Buscar assinaturas do localStorage
+      const signaturesData = JSON.parse(localStorage.getItem('safeprag_signatures') || '[]');
+      const controladorData = signaturesData
+        .filter((sig: any) => sig.signature_type === 'controlador')
+        .sort((a: any, b: any) => new Date(b.updated_at || 0).getTime() - new Date(a.updated_at || 0).getTime())[0] || null;
+
+      // Buscar userData como fallback
+      const { STORAGE_KEYS } = await import('./storageKeys');
+      const userDataStr = localStorage.getItem(STORAGE_KEYS.USER_DATA) || localStorage.getItem('userData');
+      let userData = null;
+      if (userDataStr) {
+        try {
+          userData = JSON.parse(userDataStr);
+        } catch (e) {
+          console.error('Erro ao parsear userData:', e);
+        }
+      }
+
+      // Usa a mesma lógica do PDF: controladorData primeiro, depois userData
+      const technicianName = controladorData?.controlador_name || userData?.name || 'Não informado';
+
       // Inicializar IndexedDB se necessário
       await indexedDBService.initDB();
-      
+
       // Armazenar no IndexedDB
       await indexedDBService.storePDF({
         orderNumber: serviceData.orderNumber,
@@ -68,7 +90,8 @@ export const storeServiceOrderPDF = (pdfBlob: Blob, serviceData: ServiceOrderPDF
         clientName: serviceData.client.name,
         serviceType: serviceType,
         clientCode: serviceData.client.code,
-        services: serviceData.services || [serviceData.service]
+        services: serviceData.services || [serviceData.service],
+        technicianName: technicianName
       });
     };
     reader.readAsDataURL(pdfBlob);
@@ -83,10 +106,10 @@ export const getAllStoredPDFs = async () => {
   try {
     // Inicializar IndexedDB se necessário
     await indexedDBService.initDB();
-    
+
     // Buscar todos os PDFs do IndexedDB
     const pdfs = await indexedDBService.getAllPDFs();
-    
+
     return pdfs.map(data => ({
       orderNumber: data.orderNumber,
       createdAt: data.createdAt,
@@ -105,10 +128,10 @@ export const downloadPDFFromStorage = async (orderNumber: string): Promise<void>
   try {
     // Inicializar IndexedDB se necessário
     await indexedDBService.initDB();
-    
+
     // Buscar PDF do IndexedDB
     const pdfData = await indexedDBService.getPDF(orderNumber);
-    
+
     if (!pdfData) {
       throw new Error('PDF não encontrado');
     }
@@ -129,7 +152,7 @@ export const downloadPDFFromStorage = async (orderNumber: string): Promise<void>
           data: pdfData.pdf,
           mimeType: 'application/pdf'
         });
-        
+
         if (!success) {
           throw new Error('Falha no compartilhamento nativo');
         }
@@ -142,23 +165,23 @@ export const downloadPDFFromStorage = async (orderNumber: string): Promise<void>
 
     // Detecta se está rodando no Capacitor nativo (não PWA)
     const isCapacitor = !!(window as any).Capacitor;
-    const isPWA = window.matchMedia('(display-mode: standalone)').matches || 
-                  (window.navigator as any).standalone === true ||
-                  document.referrer.includes('android-app://');
+    const isPWA = window.matchMedia('(display-mode: standalone)').matches ||
+      (window.navigator as any).standalone === true ||
+      document.referrer.includes('android-app://');
     const isMobile = /Android|webOS|iPhone|iPad|iPod|BlackBerry|IEMobile|Opera Mini/i.test(navigator.userAgent);
-    
+
     // Só usa Capacitor se estiver realmente no app nativo, não no PWA
     if (isCapacitor && !isPWA) {
       // Para dispositivos móveis, usa uma abordagem mais direta
       try {
         const { FileService } = await import('./FileService');
-        
+
         // Converte base64 diretamente para o FileService
         const fileName = `ordem-servico-${orderNumber}`;
-        
+
         // Usa o Filesystem diretamente para evitar problemas com Blob
         const { Filesystem, Directory } = await import('@capacitor/filesystem');
-        
+
         // Tenta salvar no diretório Downloads primeiro
         let result;
         try {
@@ -177,9 +200,9 @@ export const downloadPDFFromStorage = async (orderNumber: string): Promise<void>
             recursive: true
           });
         }
-        
+
         console.log('PDF salvo em:', result.uri);
-        
+
         // Tenta abrir/compartilhar o arquivo
         try {
           await FileService.openPDF(result.uri);
@@ -188,12 +211,12 @@ export const downloadPDFFromStorage = async (orderNumber: string): Promise<void>
           console.log('PDF salvo com sucesso, mas não foi possível abri-lo automaticamente');
           throw new Error('PDF salvo com sucesso! Verifique a pasta Downloads ou Documentos do seu dispositivo.');
         }
-        
+
       } catch (capacitorError) {
-         console.error('Erro no Capacitor, tentando método web:', capacitorError);
-         // Fallback para método web se o Capacitor falhar
-         await downloadPDFWeb(pdfData.pdf, orderNumber);
-       }
+        console.error('Erro no Capacitor, tentando método web:', capacitorError);
+        // Fallback para método web se o Capacitor falhar
+        await downloadPDFWeb(pdfData.pdf, orderNumber);
+      }
     } else if (isPWA && isMobile) {
       // Para PWA em dispositivos móveis, usa uma abordagem otimizada
       try {
@@ -223,11 +246,11 @@ const downloadPDFForPWA = async (base64Data: string, orderNumber: string): Promi
     }
     const blob = new Blob([bytes], { type: 'application/pdf' });
     const fileName = `ordem-servico-${orderNumber}.pdf`;
-    
+
     // Tenta usar Web Share API se disponível (Android PWA)
     if (navigator.share && navigator.canShare) {
       const file = new File([blob], fileName, { type: 'application/pdf' });
-      
+
       if (navigator.canShare({ files: [file] })) {
         await navigator.share({
           title: 'Ordem de Serviço PDF',
@@ -237,7 +260,7 @@ const downloadPDFForPWA = async (base64Data: string, orderNumber: string): Promi
         return;
       }
     }
-    
+
     // Fallback: tenta usar File System Access API se disponível
     if ('showSaveFilePicker' in window) {
       try {
@@ -248,7 +271,7 @@ const downloadPDFForPWA = async (base64Data: string, orderNumber: string): Promi
             accept: { 'application/pdf': ['.pdf'] }
           }]
         });
-        
+
         const writable = await fileHandle.createWritable();
         await writable.write(blob);
         await writable.close();
@@ -257,10 +280,10 @@ const downloadPDFForPWA = async (base64Data: string, orderNumber: string): Promi
         console.log('File System Access API falhou:', fsError);
       }
     }
-    
+
     // Fallback final: download tradicional
     await downloadPDFWeb(base64Data, orderNumber);
-    
+
   } catch (error) {
     console.error('Erro no download PWA:', error);
     throw error;
@@ -277,7 +300,7 @@ const downloadPDFWeb = async (base64Data: string, orderNumber: string): Promise<
       bytes[i] = binaryString.charCodeAt(i);
     }
     const blob = new Blob([bytes], { type: 'application/pdf' });
-    
+
     const url = window.URL.createObjectURL(blob);
     const link = document.createElement('a');
     link.href = url;
@@ -293,18 +316,42 @@ const downloadPDFWeb = async (base64Data: string, orderNumber: string): Promise<
 }
 
 export const generateServiceOrderPDF = async (
-  serviceData: ServiceOrderPDFData
+  serviceData: ServiceOrderPDFData,
+  companyId: string
 ) => {
+  // Verificação de assinatura antes de gerar PDF
+  try {
+    const { storageService } = await import('./storageService');
+    const { billingService } = await import('./billingService');
+    const userData = storageService.getUserData();
+    const role = (userData?.role || 'cliente') as 'admin' | 'controlador' | 'cliente';
+
+    if (role !== 'cliente') {
+      try {
+        const status = await billingService.getStatus(companyId);
+        if (!status?.active) {
+          throw new Error('Assinatura inativa. Geração de PDF bloqueada para administradores e controladores.');
+        }
+      } catch (e) {
+        // Mensagem clara ao usuário
+        const msg = e instanceof Error ? e.message : 'Falha ao validar assinatura';
+        throw new Error(msg);
+      }
+    }
+  } catch (precheckError) {
+    console.error('[Billing] Bloqueio de geração de PDF:', precheckError);
+    throw precheckError;
+  }
   // Garantir que o array de serviços exista
   if (!serviceData.services) {
     // Se não existir, criar um array com o serviço único (para compatibilidade)
     serviceData.services = serviceData.service ? [serviceData.service] : [];
   }
-  
+
   // Log dos dados recebidos
   console.log('Dados recebidos no pdfService:', serviceData);
   console.log('Dados do cliente recebidos:', serviceData.client);
-  
+
   try {
     // Gerar número sequencial da OS
     const osNumber = getNextOSNumber();
@@ -348,7 +395,7 @@ export const generateServiceOrderPDF = async (
         console.error('Erro ao parsear dados dos clientes:', error);
       }
     }
-    
+
     // Encontrar o cliente específico
     const fullClientData = clients.find(client => client.code === serviceData.clientCode);
 
@@ -365,7 +412,7 @@ export const generateServiceOrderPDF = async (
 
     // Verifica se existem dados retroativos no localStorage (múltiplas fontes)
     let retroactiveData = null;
-    
+
     // Buscar dados retroativos da chave principal
     const retroactiveDataStr = localStorage.getItem('retroactive_service_data');
     if (retroactiveDataStr) {
@@ -375,7 +422,7 @@ export const generateServiceOrderPDF = async (
         console.error('Erro ao parsear dados retroativos principais:', error);
       }
     }
-    
+
     // Buscar dados retroativos específicos do cliente
     const clientRetroactiveData = localStorage.getItem(`retroactiveData_${serviceData.clientCode}`);
     if (clientRetroactiveData && !retroactiveData) {
@@ -385,18 +432,18 @@ export const generateServiceOrderPDF = async (
         console.error('Erro ao parsear dados retroativos do cliente:', error);
       }
     }
-    
+
     // Aplicar dados retroativos se existirem
     if (retroactiveData && retroactiveData.isRetroactive) {
       serviceData.date = retroactiveData.date || serviceData.date;
       serviceData.startTime = retroactiveData.startTime || serviceData.startTime;
       serviceData.endTime = retroactiveData.endTime || serviceData.endTime;
-      
+
       // Aplicar outros dados retroativos se disponíveis
       if (retroactiveData.clientData) {
         serviceData.client = { ...serviceData.client, ...retroactiveData.clientData };
       }
-      
+
       console.log('Dados retroativos aplicados ao PDF:', retroactiveData);
     }
 
@@ -407,33 +454,33 @@ export const generateServiceOrderPDF = async (
         // Primeiro, verifica se a data já está no formato DD/MM/YYYY
         const brRegex = /^(\d{2})\/?(\d{2})\/?(\d{4})$/;
         const brMatch = dateStr.match(brRegex);
-        
+
         if (brMatch) {
           // Já está no formato brasileiro, apenas padroniza
           return `${brMatch[1]}/${brMatch[2]}/${brMatch[3]}`;
         }
-        
+
         // Verifica se está no formato YYYY-MM-DD (ISO)
         const isoRegex = /^(\d{4})-?(\d{2})-?(\d{2}).*$/;
         const isoMatch = dateStr.match(isoRegex);
-        
+
         if (isoMatch) {
           // Converte de ISO para brasileiro
           return `${isoMatch[3]}/${isoMatch[2]}/${isoMatch[1]}`;
         }
-        
+
         // Tenta interpretar a data usando o objeto Date
         const date = new Date(dateStr);
-        
+
         if (!isNaN(date.getTime())) {
           // Formatação manual para garantir o padrão brasileiro DD/MM/YYYY
           const day = String(date.getDate()).padStart(2, '0');
           const month = String(date.getMonth() + 1).padStart(2, '0'); // Mês começa em 0
           const year = date.getFullYear();
-          
+
           return `${day}/${month}/${year}`;
         }
-        
+
         // Se chegou aqui, não conseguiu interpretar a data
         console.warn('Formato de data não reconhecido:', dateStr);
         return dateStr; // Retorna o texto original
@@ -599,13 +646,13 @@ export const generateServiceOrderPDF = async (
 
     // Licença Ambiental (sem prefixo LO)
     const environmentalLicense = document.createElement('div');
-    environmentalLicense.innerHTML = companyData?.environmental_license?.number ? 
+    environmentalLicense.innerHTML = companyData?.environmental_license?.number ?
       `Licença Ambiental: ${companyData.environmental_license.number} - Validade: ${formatDate(companyData.environmental_license.date)}` : '';
 
     // Alvará Sanitário
     const sanitaryPermit = document.createElement('div');
     sanitaryPermit.style.textAlign = 'right';
-    sanitaryPermit.innerHTML = companyData?.sanitary_permit?.number ? 
+    sanitaryPermit.innerHTML = companyData?.sanitary_permit?.number ?
       `Alvará Sanitário: ${companyData.sanitary_permit.number} - Validade: ${formatDate(companyData.sanitary_permit.expiry_date)}` : '';
 
     licensesContainer.appendChild(environmentalLicense);
@@ -628,7 +675,7 @@ export const generateServiceOrderPDF = async (
     const clientSection = document.createElement('div');
     clientSection.style.margin = '0';
     clientSection.style.padding = '0';
-    
+
     // Buscar dados completos do cliente do localStorage se disponível
     const selectedClientDataStr = localStorage.getItem('selected_client');
     let selectedClientData = null;
@@ -639,10 +686,10 @@ export const generateServiceOrderPDF = async (
         console.error('Erro ao parsear dados do cliente selecionado:', error);
       }
     }
-    
+
     // Usar dados completos do cliente se disponível, senão usar dados do serviceData.client
     const finalClientData = selectedClientData || serviceData.client || {};
-    
+
     clientSection.innerHTML = `
       <div style="background-color: #1a73e8; color: white; padding: 3px 10px; margin: 10px 0; font-size: 13px; text-align: left;"><span style="transform: translateY(-6px); display: inline-block;">Dados Do Cliente</span></div>
       <table style="width: 100%; border-collapse: collapse; margin-top: 5px; font-size: 12px;">
@@ -674,12 +721,12 @@ export const generateServiceOrderPDF = async (
     // Tabela de serviço
     const serviceTable = document.createElement('div');
     serviceTable.style.marginTop = '20px';
-    
+
     // Verifica se temos múltiplos serviços ou apenas um serviço legado
-    const servicesToRender = serviceData.services && serviceData.services.length > 0 
-      ? serviceData.services 
+    const servicesToRender = serviceData.services && serviceData.services.length > 0
+      ? serviceData.services
       : (serviceData.service ? [serviceData.service] : []);
-    
+
     // Título da seção
     serviceTable.innerHTML = `
       <table style="width: 100%; border-collapse: collapse; margin-bottom: 20px; font-size: 10px;">
@@ -692,25 +739,25 @@ export const generateServiceOrderPDF = async (
         </thead>
         <tbody>
           ${servicesToRender.map(service => {
-            if (service && service.type && service.target && service.location) {
-              const formattedType = (service.type || '').replace(/_/g, ' ').replace(/\s+/g, ' ').trim();
-              return `
+      if (service && service.type && service.target && service.location) {
+        const formattedType = (service.type || '').replace(/_/g, ' ').replace(/\s+/g, ' ').trim();
+        return `
                 <tr>
                   <td style="padding: 8px 3px; border: 1px solid #ddd; text-align: center; vertical-align: middle;">${formattedType.charAt(0).toUpperCase() + formattedType.slice(1)}</td>
                   <td style="padding: 8px 3px; border: 1px solid #ddd; text-align: center; vertical-align: middle;">${service.target.charAt(0).toUpperCase() + service.target.slice(1)}</td>
                   <td style="padding: 8px 3px; border: 1px solid #ddd; text-align: center; vertical-align: middle;">${service.location}</td>
                 </tr>
               `;
-            }
-            return '';
-          }).join('')}
+      }
+      return '';
+    }).join('')}
         </tbody>
       </table>
     `;
-    
+
     // Verifica se algum serviço tem produto associado
     const hasProducts = servicesToRender.some(service => service.product);
-    
+
     // Se houver produtos, cria a tabela de produtos
     if (hasProducts) {
       const productsTable = document.createElement('div');
@@ -731,12 +778,12 @@ export const generateServiceOrderPDF = async (
           </thead>
           <tbody>
             ${servicesToRender.map(service => {
-              // Verifica se há um produto associado a este serviço
-              if (!service.product) {
-                return ''; // Não renderiza a linha se não houver produto
-              }
-              // Se houver produto, renderiza a linha da tabela
-              return `
+        // Verifica se há um produto associado a este serviço
+        if (!service.product) {
+          return ''; // Não renderiza a linha se não houver produto
+        }
+        // Se houver produto, renderiza a linha da tabela
+        return `
                 <tr>
                   <td style="padding: 8px 3px; border: 1px solid #ddd; text-align: center; vertical-align: middle;">${service.product.name || ''}</td>
                   <td style="padding: 8px 3px; border: 1px solid #ddd; text-align: center; vertical-align: middle;">${service.product.activeIngredient || ''}</td>
@@ -748,7 +795,7 @@ export const generateServiceOrderPDF = async (
                   <td style="padding: 8px 3px; border: 1px solid #ddd; text-align: center; vertical-align: middle;">${service.product.dilution || ''}</td>
                 </tr>
               `;
-            }).join('')}
+      }).join('')}
           </tbody>
         </table>
       `;
@@ -787,13 +834,13 @@ export const generateServiceOrderPDF = async (
       `;
       serviceTable.appendChild(legacyProductTable);
     }
-    
+
 
     // Dispositivos monitorados - só cria se não for um dos tipos de serviço de tratamento ou inspeção
     let devicesSection = null;
     // Processando tipo de serviço
     const treatmentTypes = ['pulverizacao', 'atomizacao', 'termonebulizacao', 'polvilhamento', 'iscagem_gel', 'inspeção', 'inspeçao'];
-    
+
     // Criar a seção de dispositivos se houver dispositivos salvos
     if (serviceData.devices && serviceData.devices.length > 0) {
       devicesSection = document.createElement('div');
@@ -825,63 +872,63 @@ export const generateServiceOrderPDF = async (
             </thead>
             <tbody style="page-break-before: avoid; break-before: avoid;">
               ${items.map((device, rowIdx) => {
-                const getSequences = (numbers: number[] = []): string => {
-                  if (!numbers || numbers.length === 0) return '';
-                  const sortedNumbers = [...numbers].sort((a, b) => a - b);
-                  const sequences: string[] = [];
-                  let start = sortedNumbers[0];
-                  let prev = start;
-                  for (let i = 1; i <= sortedNumbers.length; i++) {
-                    if (i === sortedNumbers.length || sortedNumbers[i] !== prev + 1) {
-                      if (start === prev) {
-                        sequences.push(start.toString());
-                      } else {
-                        sequences.push(`${start}-${prev}`);
-                      }
-                      if (i < sortedNumbers.length) {
-                        start = sortedNumbers[i];
-                        prev = start;
-                      }
-                    } else {
-                      prev = sortedNumbers[i];
-                    }
-                  }
-                  return sequences.join(', ');
-                };
+        const getSequences = (numbers: number[] = []): string => {
+          if (!numbers || numbers.length === 0) return '';
+          const sortedNumbers = [...numbers].sort((a, b) => a - b);
+          const sequences: string[] = [];
+          let start = sortedNumbers[0];
+          let prev = start;
+          for (let i = 1; i <= sortedNumbers.length; i++) {
+            if (i === sortedNumbers.length || sortedNumbers[i] !== prev + 1) {
+              if (start === prev) {
+                sequences.push(start.toString());
+              } else {
+                sequences.push(`${start}-${prev}`);
+              }
+              if (i < sortedNumbers.length) {
+                start = sortedNumbers[i];
+                prev = start;
+              }
+            } else {
+              prev = sortedNumbers[i];
+            }
+          }
+          return sequences.join(', ');
+        };
 
-                return `
+        return `
                   <tr style="page-break-inside: avoid; break-inside: avoid; ${'${rowIdx === 0 ? \'page-break-before: avoid; break-before: avoid;\' : \'\'}'}">
                     <td style="padding: 8px 3px; border: 1px solid #ddd; text-align: center; vertical-align: middle;">${type}</td>
                     <td style="padding: 8px 3px; border: 1px solid #ddd; text-align: center; vertical-align: middle;">${device.quantity}</td>
                     <td style="padding: 8px 3px; border: 1px solid #ddd; text-align: center; vertical-align: middle;">
                       ${device.status
-                        .sort((a, b) => a.name.localeCompare(b.name))
-                        .map((statusItem, index, array) => {
-                          const percentage = ((statusItem.count / device.quantity) * 100).toFixed(1);
-                          return `
+            .sort((a, b) => a.name.localeCompare(b.name))
+            .map((statusItem, index, array) => {
+              const percentage = ((statusItem.count / device.quantity) * 100).toFixed(1);
+              return `
                             <div style="font-size: 10px;">
                               ${statusItem.name} (${statusItem.count} - ${percentage}%)
                               ${index < array.length - 1 ? '<br><br>' : ''}
                             </div>
                           `;
-                        }).join('')}
+            }).join('')}
                     </td>
                     <td style="padding: 8px 3px; border: 1px solid #ddd; text-align: left; vertical-align: top; column-count: 2; column-gap: 12px; white-space: normal; word-break: break-word;">
                       ${device.status
-                        .sort((a, b) => a.name.localeCompare(b.name))
-                        .map((statusItem, index, array) => {
-                          const sequence = getSequences(statusItem.devices);
-                          return `
+            .sort((a, b) => a.name.localeCompare(b.name))
+            .map((statusItem, index, array) => {
+              const sequence = getSequences(statusItem.devices);
+              return `
                             ${statusItem.name}:
                             <br>
                             ${sequence}
                             ${index < array.length - 1 ? '<br><br>' : ''}
                           `;
-                        }).join('')}
+            }).join('')}
                     </td>
                   </tr>
                 `;
-              }).join('')}
+      }).join('')}
             </tbody>
           </table>
         `).join('')}
@@ -918,7 +965,7 @@ export const generateServiceOrderPDF = async (
 
     // Assinaturas
     const signaturesSection = document.createElement('div');
-    
+
     // Buscar dados do usuário do localStorage
     const userData = JSON.parse(localStorage.getItem('safeprag_user_data') || localStorage.getItem('userData') || '{}');
 
@@ -939,13 +986,13 @@ export const generateServiceOrderPDF = async (
       text-align: center;
       width: 180px;
     `;
-    
+
     // Buscar assinaturas do localStorage
     const signaturesData = JSON.parse(localStorage.getItem('safeprag_signatures') || '[]');
     const controladorData = signaturesData
       .filter((sig: any) => sig.signature_type === 'controlador')
       .sort((a: any, b: any) => new Date(b.updated_at || 0).getTime() - new Date(a.updated_at || 0).getTime())[0] || null;
-    
+
     const tecnicoData = signaturesData
       .filter((sig: any) => sig.signature_type === 'tecnico')
       .sort((a: any, b: any) => new Date(b.updated_at || 0).getTime() - new Date(a.updated_at || 0).getTime())[0] || null;
@@ -981,12 +1028,12 @@ export const generateServiceOrderPDF = async (
     // Seção de resumo de contagem de pragas
     let pestCountSection = null;
     console.log('Dados de contagem de pragas recebidos no PDF:', serviceData.pestCounts);
-    
+
     // Verificar se existem dados de contagem de pragas no localStorage
     // Tenta buscar usando diferentes chaves possíveis para garantir compatibilidade
     const possibleKeys = ['pestCounts', 'safeprag_pest_counts', 'pest_counts', 'pest_count_data', 'safeprag_pest_count_data'];
     let localPestCounts = null;
-    
+
     for (const key of possibleKeys) {
       const pestCountsStr = localStorage.getItem(key);
       if (pestCountsStr) {
@@ -1003,7 +1050,7 @@ export const generateServiceOrderPDF = async (
         }
       }
     }
-    
+
     // Verificar se há dados de contagem de pragas na ordem de serviço ativa
     const activeOrderStr = localStorage.getItem('active_service_order');
     if (activeOrderStr && (!serviceData.pestCounts || serviceData.pestCounts.length === 0)) {
@@ -1017,21 +1064,21 @@ export const generateServiceOrderPDF = async (
         console.error('Erro ao parsear dados da ordem de serviço ativa:', error);
       }
     }
-    
+
     // Buscar dados de contagem de pragas das ordens de serviço ativas (múltiplas fontes)
     if (!serviceData.pestCounts || serviceData.pestCounts.length === 0) {
       // Buscar em activeOrders que foi carregado anteriormente
-      const currentActiveOrder = activeOrders.find(order => 
-        order.clientCode === serviceData.clientCode || 
+      const currentActiveOrder = activeOrders.find(order =>
+        order.clientCode === serviceData.clientCode ||
         order.client?.code === serviceData.clientCode
       );
-      
+
       if (currentActiveOrder && currentActiveOrder.pestCounts && currentActiveOrder.pestCounts.length > 0) {
         serviceData.pestCounts = currentActiveOrder.pestCounts;
         console.log('Usando dados de contagem de pragas de ordem ativa encontrada:', currentActiveOrder.pestCounts);
       }
     }
-    
+
     // Verificar se há dados de contagem de pragas nos serviços ativos
     const pestCountsOrdersStr = localStorage.getItem(SERVICE_ORDERS_KEY);
     if (pestCountsOrdersStr && (!serviceData.pestCounts || serviceData.pestCounts.length === 0)) {
@@ -1053,15 +1100,15 @@ export const generateServiceOrderPDF = async (
         console.error('Erro ao buscar dados de contagem de pragas das ordens de serviço:', error);
       }
     }
-    
+
     // Verificar se há dados de contagem de pragas em ordens de serviço em andamento
     const ongoingOrdersStr = localStorage.getItem('ongoing_service_orders');
     if (ongoingOrdersStr && (!serviceData.pestCounts || serviceData.pestCounts.length === 0)) {
       try {
         const ongoingOrders = JSON.parse(ongoingOrdersStr);
         // Buscar na ordem de serviço correspondente ao cliente atual
-        const currentOrder = ongoingOrders.find(order => 
-          order.clientCode === serviceData.clientCode || 
+        const currentOrder = ongoingOrders.find(order =>
+          order.clientCode === serviceData.clientCode ||
           order.client?.code === serviceData.clientCode
         );
         if (currentOrder && currentOrder.pestCounts && currentOrder.pestCounts.length > 0) {
@@ -1072,7 +1119,7 @@ export const generateServiceOrderPDF = async (
         console.error('Erro ao parsear ordens de serviço em andamento:', error);
       }
     }
-    
+
     // Buscar dados de contagem de pragas específicos do cliente no localStorage
     if (!serviceData.pestCounts || serviceData.pestCounts.length === 0) {
       const clientPestCountsStr = localStorage.getItem(`pestCounts_${serviceData.clientCode}`);
@@ -1088,10 +1135,10 @@ export const generateServiceOrderPDF = async (
         }
       }
     }
-    
+
     // Log para verificar os dados de contagem de pragas antes de criar a tabela
     console.log('Dados de contagem de pragas antes de criar a tabela:', JSON.stringify(serviceData.pestCounts || []));
-    
+
     // Se ainda não tiver dados de contagem de pragas, verificar se há dados no formato antigo
     if (!serviceData.pestCounts || serviceData.pestCounts.length === 0) {
       const oldFormatPestCountsStr = localStorage.getItem('pest_counts_data');
@@ -1108,7 +1155,7 @@ export const generateServiceOrderPDF = async (
                 count: Number(count)
               })).filter(pest => pest.count > 0)
             })).filter(device => device.pests.length > 0);
-            
+
             console.log('Convertendo dados de contagem de pragas do formato antigo:', serviceData.pestCounts);
           }
         } catch (error) {
@@ -1116,13 +1163,13 @@ export const generateServiceOrderPDF = async (
         }
       }
     }
-    
+
     // Criar seção de contagem de pragas por dispositivo SOMENTE se houver pragas com contagem > 0
     let hasPestsWithCount = false;
-    
+
     if (serviceData.pestCounts && serviceData.pestCounts.length > 0) {
       console.log('Processando dados de contagem de pragas para o PDF...');
-      
+
       // Verificar se há pelo menos um dispositivo com pragas contadas
       for (const device of serviceData.pestCounts) {
         if (device.pests && device.pests.some(pest => pest.count > 0)) {
@@ -1130,18 +1177,18 @@ export const generateServiceOrderPDF = async (
           break;
         }
       }
-      
+
       // Criar a seção SOMENTE se houver pragas com contagem > 0
       if (hasPestsWithCount) {
         pestCountSection = document.createElement('div');
         pestCountSection.className = 'section-container';
         pestCountSection.style.marginTop = '20px';
-      
+
         // Título removido: usando título dentro do thead da tabela conforme solicitado
-        
+
         // Não inserir quebra de página automática antes da tabela; confiar nas regras de 'avoid' para melhor aproveitamento de página
         // (removido page-break forçado)
-        
+
         // CSS para evitar quebra dentro de linhas e manter visual consistente
         const styleEl = document.createElement('style');
         styleEl.textContent = `
@@ -1170,7 +1217,7 @@ export const generateServiceOrderPDF = async (
         stagingContainer.style.width = '794px';
         stagingContainer.appendChild(pestCountSection);
         document.body.appendChild(stagingContainer);
-        
+
         // Função que cria uma nova tabela com cabeçalho repetido
         const createPestCountTable = (compact: boolean = false) => {
           const tbl = document.createElement('table');
@@ -1201,7 +1248,7 @@ export const generateServiceOrderPDF = async (
             '</tr></thead><tbody></tbody>';
           return tbl;
         };
-        
+
         // Heurística para quebrar entre blocos de dispositivos evitando cortar linhas
         const estimatedRowHeight = 12; // altura aproximada com padding reduzido (4px) e line-height menor
         const headerHeight = 44; // cabeçalho com duas linhas mais compactas
@@ -1258,7 +1305,7 @@ export const generateServiceOrderPDF = async (
 
         let usedHeightOnPage = initialUsedHeightOnPage;
         let hasHeaderOnCurrentPage = false; // controla repetição do cabeçalho apenas quando há nova página
-        
+
         serviceData.pestCounts.forEach(device => {
           // Ignora dispositivos sem pragas
           if (!device.pests || device.pests.length === 0) return;
@@ -1372,19 +1419,19 @@ export const generateServiceOrderPDF = async (
           measureBox.remove();
         });
         // Remover container de staging após construir toda a seção
-        try { document.body.removeChild(stagingContainer); } catch {}
-        
+        try { document.body.removeChild(stagingContainer); } catch { }
+
         // Log para debug das tabelas geradas
         console.log('Tabelas de contagem de pragas geradas (paginadas):', pestCountSection.innerHTML);
         console.log('Dados de contagem de pragas processados:', serviceData.pestCounts);
       }
     }
-    
+
     // Log para debug da tabela de contagem de pragas
     console.log('Tabela de contagem de pragas gerada:', serviceData.pestCounts || []);
     console.log('Seção de contagem de pragas criada:', !!pestCountSection);
     console.log('Há pragas com contagem > 0:', hasPestsWithCount);
-    
+
     // Montar o conteúdo do relatório com containers de seção
     // Primeiro, criar um array com as seções para facilitar a manipulação
     const reportSections = [
@@ -1392,21 +1439,21 @@ export const generateServiceOrderPDF = async (
         ${header.outerHTML}
         ${licensesContainer.outerHTML}
         ${clientSection.outerHTML}
-      </div>`, 
+      </div>`,
       `<div class="section-container">
         ${serviceSection.outerHTML}
         ${servicesInfoSection.outerHTML}
         ${serviceTable.outerHTML}
       </div>`
     ];
-    
+
     // Adicionar seção de dispositivos se existir
     if (devicesSection) {
       reportSections.push(`<div class="section-container">
         ${devicesSection.outerHTML}
       </div>`);
     }
-    
+
     // Adicionar a seção de contagem de pragas ao relatório SOMENTE se houver pragas com contagem > 0
     if (pestCountSection && hasPestsWithCount) {
       // Sem quebra forçada: o algoritmo interno decide se deve iniciar nova página
@@ -1417,7 +1464,7 @@ export const generateServiceOrderPDF = async (
     } else {
       console.log('Seção de contagem de pragas não adicionada ao relatório: não há pragas com contagem positiva');
     }
-    
+
     // Adicionar seção complementar com blocos indivisíveis (Observações e Assinaturas)
     {
       const pageHeightPx = 1122; // A4 @96dpi (aprox.)
@@ -1487,16 +1534,16 @@ export const generateServiceOrderPDF = async (
 
       reportSections.push(finalComplementaryHTML);
     }
-    
+
     // Juntar todas as seções
     reportElement.innerHTML = reportSections.join('\n');
-    
+
     // Log para verificar se a seção de contagem de pragas foi adicionada
     console.log('Seções do relatório:', reportSections.length, 'incluindo contagem de pragas:', !!pestCountSection);
-    
+
     // Log para debug da estrutura final do relatório
     console.log('Estrutura do relatório PDF com tabela de contagem de pragas forçada:', reportElement.innerHTML);
-    
+
     // Log para debug da estrutura final do relatório
     console.log('Estrutura do relatório PDF:', {
       hasDevicesSection: !!devicesSection,
@@ -1530,7 +1577,7 @@ export const generateServiceOrderPDF = async (
       .from(reportElement)
       .toPdf()
       .get('pdf');
-      
+
     // Limpa os dados retroativos após gerar o PDF
     localStorage.removeItem('retroactive_service_data');
 
@@ -1570,18 +1617,18 @@ export const generateAndShareServiceOrderPDF = async (
   try {
     // Gerar o PDF
     const pdfBlob = await generateServiceOrderPDF(serviceData);
-    
+
     // Construir nome do arquivo com código do cliente
     let filename = `ordem-servico-${serviceData.orderNumber}`;
     if (serviceData.client?.code) {
       const sanitizedClientCode = serviceData.client.code.replace(/[^a-zA-Z0-9\s]/g, '').replace(/\s+/g, '_');
       filename = `OS_${serviceData.orderNumber}_${sanitizedClientCode}_${new Date().toLocaleDateString('pt-BR').replace(/\//g, '-')}`;
     }
-    
+
     // Se estiver em plataforma nativa e shouldShare for true, perguntar se deseja compartilhar
     if (Capacitor.isNativePlatform() && shouldShare) {
       const shouldShareFile = confirm('Deseja compartilhar o PDF da ordem de serviço?');
-      
+
       if (shouldShareFile) {
         try {
           // Converter blob para base64
@@ -1595,20 +1642,20 @@ export const generateAndShareServiceOrderPDF = async (
             };
             reader.onerror = reject;
           });
-          
+
           reader.readAsDataURL(pdfBlob);
           const base64Data = await base64Promise;
-          
+
           const success = await fileSharingService.shareFile({
             filename: `${filename}.pdf`,
             data: base64Data,
             mimeType: 'application/pdf'
           });
-          
+
           if (!success) {
             throw new Error('Falha no compartilhamento');
           }
-          
+
           return pdfBlob;
         } catch (shareError) {
           console.warn('Compartilhamento falhou, fazendo download:', shareError);
@@ -1617,7 +1664,7 @@ export const generateAndShareServiceOrderPDF = async (
         }
       }
     }
-    
+
     return pdfBlob;
   } catch (error) {
     console.error('Erro ao gerar e compartilhar PDF:', error);
@@ -1630,25 +1677,25 @@ export const sharePDFFromStorage = async (orderNumber: string): Promise<void> =>
   try {
     const storedPDFs = JSON.parse(localStorage.getItem('safeprag_service_order_pdfs') || '{}');
     const pdfData = storedPDFs[orderNumber];
-    
+
     if (!pdfData) {
       throw new Error('PDF não encontrado no armazenamento');
     }
-    
+
     // Construir nome do arquivo
     let filename = `ordem-servico-${orderNumber}`;
     if (pdfData.clientCode) {
       const sanitizedClientCode = pdfData.clientCode.replace(/[^a-zA-Z0-9\s]/g, '').replace(/\s+/g, '_');
       filename = `OS_${orderNumber}_${sanitizedClientCode}_${new Date().toLocaleDateString('pt-BR').replace(/\//g, '-')}`;
     }
-    
+
     if (Capacitor.isNativePlatform()) {
       const success = await fileSharingService.shareFile({
         filename: `${filename}.pdf`,
         data: pdfData.pdf,
         mimeType: 'application/pdf'
       });
-      
+
       if (!success) {
         throw new Error('Falha no compartilhamento do PDF');
       }
@@ -1666,19 +1713,37 @@ export const sharePDFFromStorage = async (orderNumber: string): Promise<void> =>
 export const generateEditableServiceOrderPDF = async (
   serviceData: ServiceOrderPDFData
 ): Promise<void> => {
+  // Verificação de assinatura antes de gerar PDF editável
+  try {
+    const { storageService } = await import('./storageService');
+    const { billingService } = await import('./billingService');
+    const userData = storageService.getUserData();
+    const role = (userData?.role || 'cliente') as 'admin' | 'controlador' | 'cliente';
+    const company = storageService.getCompany();
+    const companyId: string = company?.id?.toString?.() || company?.cnpj || 'default-company';
+    if (role !== 'cliente') {
+      const status = await billingService.getStatus(companyId);
+      if (!status?.active) {
+        throw new Error('Assinatura inativa. Geração de PDF bloqueada para administradores e controladores.');
+      }
+    }
+  } catch (precheckError) {
+    console.error('[Billing] Bloqueio de geração de PDF (editável):', precheckError);
+    throw precheckError;
+  }
   try {
     // Buscar dados da empresa
     const companyData = await getCompanyData();
-    
+
     // Criar novo documento PDF
     const pdfDoc = await PDFDocument.create();
     const page = pdfDoc.addPage([595.28, 841.89]); // A4 size
     const { width, height } = page.getSize();
-    
+
     // Definir fonte
     const font = await pdfDoc.embedFont(StandardFonts.Helvetica);
     const boldFont = await pdfDoc.embedFont(StandardFonts.HelveticaBold);
-    
+
     // Cabeçalho da empresa
     page.drawText(companyData?.name || 'Nome da Empresa', {
       x: 50,
@@ -1687,7 +1752,7 @@ export const generateEditableServiceOrderPDF = async (
       font: boldFont,
       color: rgb(0, 0, 0)
     });
-    
+
     if (companyData?.cnpj) {
       page.drawText(`CNPJ: ${companyData.cnpj}`, {
         x: 50,
@@ -1697,7 +1762,7 @@ export const generateEditableServiceOrderPDF = async (
         color: rgb(0, 0, 0)
       });
     }
-    
+
     // Título do documento
     page.drawText('ORDEM DE SERVIÇO', {
       x: width / 2 - 80,
@@ -1706,7 +1771,7 @@ export const generateEditableServiceOrderPDF = async (
       font: boldFont,
       color: rgb(0, 0, 0)
     });
-    
+
     // Número da OS
     page.drawText(`Nº: ${serviceData.orderNumber}`, {
       x: width - 150,
@@ -1715,10 +1780,10 @@ export const generateEditableServiceOrderPDF = async (
       font: font,
       color: rgb(0, 0, 0)
     });
-    
+
     // Campos editáveis da empresa
     const form = pdfDoc.getForm();
-    
+
     // Campo para nome da empresa
     const companyNameField = form.createTextField('company_name');
     companyNameField.setText(companyData?.name || '');
@@ -1730,7 +1795,7 @@ export const generateEditableServiceOrderPDF = async (
       borderColor: rgb(0, 0, 0),
       backgroundColor: rgb(0.95, 0.95, 0.95)
     });
-    
+
     // Campo para CNPJ da empresa
     const companyCnpjField = form.createTextField('company_cnpj');
     companyCnpjField.setText(companyData?.cnpj || '');
@@ -1742,7 +1807,7 @@ export const generateEditableServiceOrderPDF = async (
       borderColor: rgb(0, 0, 0),
       backgroundColor: rgb(0.95, 0.95, 0.95)
     });
-    
+
     // Campo para número da OS
     const osNumberField = form.createTextField('os_number');
     osNumberField.setText(serviceData.orderNumber);
@@ -1754,10 +1819,10 @@ export const generateEditableServiceOrderPDF = async (
       borderColor: rgb(0, 0, 0),
       backgroundColor: rgb(0.95, 0.95, 0.95)
     });
-    
+
     // Dados do cliente
     let yPosition = height - 180;
-    
+
     page.drawText('DADOS DO CLIENTE:', {
       x: 50,
       y: yPosition,
@@ -1765,9 +1830,9 @@ export const generateEditableServiceOrderPDF = async (
       font: boldFont,
       color: rgb(0, 0, 0)
     });
-    
+
     yPosition -= 30;
-    
+
     if (serviceData.client) {
       // Campo para nome do cliente
       page.drawText('Nome:', {
@@ -1777,7 +1842,7 @@ export const generateEditableServiceOrderPDF = async (
         font: font,
         color: rgb(0, 0, 0)
       });
-      
+
       const clientNameField = form.createTextField('client_name');
       clientNameField.setText(serviceData.client.name || '');
       clientNameField.addToPage(page, {
@@ -1788,9 +1853,9 @@ export const generateEditableServiceOrderPDF = async (
         borderColor: rgb(0, 0, 0),
         backgroundColor: rgb(0.95, 0.95, 0.95)
       });
-      
+
       yPosition -= 35;
-      
+
       // Campo para endereço
       page.drawText('Endereço:', {
         x: 50,
@@ -1799,7 +1864,7 @@ export const generateEditableServiceOrderPDF = async (
         font: font,
         color: rgb(0, 0, 0)
       });
-      
+
       const clientAddressField = form.createTextField('client_address');
       clientAddressField.setText(serviceData.client.address || '');
       clientAddressField.addToPage(page, {
@@ -1810,9 +1875,9 @@ export const generateEditableServiceOrderPDF = async (
         borderColor: rgb(0, 0, 0),
         backgroundColor: rgb(0.95, 0.95, 0.95)
       });
-      
+
       yPosition -= 35;
-      
+
       // Campo para telefone
       page.drawText('Telefone:', {
         x: 50,
@@ -1821,7 +1886,7 @@ export const generateEditableServiceOrderPDF = async (
         font: font,
         color: rgb(0, 0, 0)
       });
-      
+
       const clientPhoneField = form.createTextField('client_phone');
       clientPhoneField.setText(serviceData.client.phone || '');
       clientPhoneField.addToPage(page, {
@@ -1833,10 +1898,10 @@ export const generateEditableServiceOrderPDF = async (
         backgroundColor: rgb(0.95, 0.95, 0.95)
       });
     }
-    
+
     // Seção de assinaturas
     yPosition = 150;
-    
+
     page.drawText('ASSINATURAS:', {
       x: 50,
       y: yPosition,
@@ -1844,7 +1909,7 @@ export const generateEditableServiceOrderPDF = async (
       font: boldFont,
       color: rgb(0, 0, 0)
     });
-    
+
     // Assinatura do técnico
     page.drawText('Técnico:', {
       x: 50,
@@ -1853,14 +1918,14 @@ export const generateEditableServiceOrderPDF = async (
       font: font,
       color: rgb(0, 0, 0)
     });
-    
+
     page.drawLine({
       start: { x: 100, y: yPosition - 45 },
       end: { x: 250, y: yPosition - 45 },
       thickness: 1,
       color: rgb(0, 0, 0)
     });
-    
+
     // Assinatura do cliente
     page.drawText('Cliente:', {
       x: 300,
@@ -1869,35 +1934,35 @@ export const generateEditableServiceOrderPDF = async (
       font: font,
       color: rgb(0, 0, 0)
     });
-    
+
     page.drawLine({
       start: { x: 350, y: yPosition - 45 },
       end: { x: 500, y: yPosition - 45 },
       thickness: 1,
       color: rgb(0, 0, 0)
     });
-    
+
     // Gerar o PDF
     const pdfBytes = await pdfDoc.save();
-    
+
     // Construir nome do arquivo
     let filename = `ordem-servico-editavel-${serviceData.orderNumber}`;
     if (serviceData.client?.code) {
       const sanitizedClientCode = serviceData.client.code.replace(/[^a-zA-Z0-9\s]/g, '').replace(/\s+/g, '_');
       filename = `OS_Editavel_${serviceData.orderNumber}_${sanitizedClientCode}_${new Date().toLocaleDateString('pt-BR').replace(/\//g, '-')}`;
     }
-    
+
     // Download do PDF
     if (Capacitor.isNativePlatform()) {
       // Converter para base64
       const base64Data = btoa(String.fromCharCode(...pdfBytes));
-      
+
       const success = await fileSharingService.shareFile({
         filename: `${filename}.pdf`,
         data: base64Data,
         mimeType: 'application/pdf'
       });
-      
+
       if (!success) {
         throw new Error('Falha no compartilhamento do PDF editável');
       }
@@ -1913,7 +1978,7 @@ export const generateEditableServiceOrderPDF = async (
       document.body.removeChild(link);
       URL.revokeObjectURL(url);
     }
-    
+
   } catch (error) {
     console.error('Erro ao gerar PDF editável:', error);
     throw error;
@@ -1924,7 +1989,7 @@ export const generateEditableServiceOrderPDF = async (
 const getCompanyData = async (): Promise<CompanyData | null> => {
   try {
     console.log('📱 Carregando dados da empresa APENAS do localStorage');
-    
+
     // Busca APENAS do localStorage
     const localData = localStorage.getItem(COMPANY_STORAGE_KEY);
     if (localData) {
@@ -1933,13 +1998,13 @@ const getCompanyData = async (): Promise<CompanyData | null> => {
       console.log('Dados da empresa carregados do localStorage:', parsedData);
       return parsedData;
     }
-    
+
     // Retorna null se não encontrar dados no arquivo JSON de backup
     console.log('Nenhum dado da empresa encontrado no arquivo JSON de backup');
     return null;
   } catch (error) {
     console.error('Erro ao buscar dados da empresa do localStorage:', error);
-    
+
     // Retorna null em caso de erro
     return null;
   }
@@ -2030,17 +2095,17 @@ export const showShareOptionsAfterFinishServiceOrder = async (
         'Salvar PDF Localmente',
         'Cancelar'
       ];
-      
+
       // Simular um ActionSheet nativo (em uma implementação real, usaria Capacitor ActionSheet)
       const choice = await new Promise<number>((resolve) => {
         const message = `Ordem de Serviço ${serviceData.orderNumber} finalizada!\n\nEscolha uma opção:`;
         const optionsText = options.map((opt, index) => `${index + 1}. ${opt}`).join('\n');
-        
+
         const userChoice = prompt(`${message}\n\n${optionsText}\n\nDigite o número da opção (1-${options.length}):`);
         const choiceNumber = parseInt(userChoice || '4') - 1;
         resolve(Math.max(0, Math.min(choiceNumber, options.length - 1)));
       });
-      
+
       switch (choice) {
         case 0: // Gerar e Compartilhar PDF
           await generateAndShareServiceOrderPDF(serviceData, true);
@@ -2061,12 +2126,12 @@ export const showShareOptionsAfterFinishServiceOrder = async (
       const shouldGenerate = confirm(
         `Ordem de Serviço ${serviceData.orderNumber} finalizada!\n\nDeseja gerar o PDF agora?`
       );
-      
+
       if (shouldGenerate) {
         const shouldMakeEditable = confirm(
           'Deseja gerar um PDF editável ou um PDF padrão?\n\nOK = PDF Editável\nCancelar = PDF Padrão'
         );
-        
+
         if (shouldMakeEditable) {
           await generateEditableServiceOrderPDF(serviceData);
         } else {

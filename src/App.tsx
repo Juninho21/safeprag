@@ -1,6 +1,7 @@
 import React, { useState, useEffect, useReducer, useRef, useCallback } from 'react';
-import { 
-  Calendar, 
+import { useLocation } from 'react-router-dom';
+import {
+  Calendar,
   Settings,
   ClipboardList,
   Activity,
@@ -21,6 +22,9 @@ import { getActiveServiceOrder, approveServiceOrder, updateScheduleStatus, finis
 import { fileSharingService } from './services/fileSharingService';
 import { v4 as uuidv4 } from 'uuid';
 import { STORAGE_KEYS } from './services/storageKeys';
+import { useAuth } from './contexts/AuthContext';
+import { RequireRole } from './components/Auth/RequireRole';
+import DownloadsManagement from './components/ServiceOrders/DownloadsManagement';
 // Removido: import de dados de exemplo
 
 interface State {
@@ -92,12 +96,14 @@ type Action =
   | { type: 'SET_DEVICE'; payload: string }
   | { type: 'SET_STATUS'; payload: string }
   | { type: 'SET_QUANTITY'; payload: string }
-  | { type: 'SET_DEVICES'; payload: Array<{
-    id: string;
-    type: string;
-    status: string;
-    quantity?: string;
-  }> }
+  | {
+    type: 'SET_DEVICES'; payload: Array<{
+      id: string;
+      type: string;
+      status: string;
+      quantity?: string;
+    }>
+  }
   | { type: 'UPDATE_DEVICE'; payload: { id: string; status: string | null } }
   | { type: 'SET_LOADING'; payload: boolean }
   | { type: 'SAVE_DEVICES' }
@@ -106,37 +112,37 @@ type Action =
   | { type: 'SET_PAGE'; payload: string }
   | { type: 'SET_SELECTED_PRODUCT'; payload: Product | null }
   | { type: 'CLEAR_SELECTED_PRODUCT' }
-  | { 
-      type: 'ADD_SERVICE_ORDER'; 
-      payload: { 
-        devices: Array<{
-          id: string;
-          type: string;
-          status: string;
-          quantity?: string;
-        }>;
-        pdfUrl: string;
-        client: {
-          code: string;
-          name: string;
-          address: string;
-        };
-        service: {
-          type: string;
-          target: string;
-          location: string;
-        };
-        product: Product;
-        observations: string;
-        startTime: string;
-        endTime: string;
-        signatures: {
-          serviceResponsible: string;
-          technicalResponsible: string;
-          clientRepresentative: string;
-        };
-      } 
+  | {
+    type: 'ADD_SERVICE_ORDER';
+    payload: {
+      devices: Array<{
+        id: string;
+        type: string;
+        status: string;
+        quantity?: string;
+      }>;
+      pdfUrl: string;
+      client: {
+        code: string;
+        name: string;
+        address: string;
+      };
+      service: {
+        type: string;
+        target: string;
+        location: string;
+      };
+      product: Product;
+      observations: string;
+      startTime: string;
+      endTime: string;
+      signatures: {
+        serviceResponsible: string;
+        technicalResponsible: string;
+        clientRepresentative: string;
+      };
     }
+  }
   | { type: 'SET_START_TIME'; payload: Date }
   | { type: 'SET_END_TIME'; payload: Date };
 
@@ -359,7 +365,9 @@ interface ServiceDataForPDF {
 }
 
 function App() {
+  const routerLocation = useLocation();
   const [activeTab, setActiveTab] = useState('schedule');
+  const { role } = useAuth();
   const [state, dispatch] = useReducer(reducer, initialState);
   const [serviceType, setServiceType] = useState('');
   const [location, setLocation] = useState('');
@@ -430,7 +438,7 @@ function App() {
       const activeOrder = orders.find(order => order.status === 'in_progress');
       if (activeOrder) {
         dispatch({ type: 'SET_START_TIME', payload: new Date(activeOrder.createdAt) });
-        
+
         // Usar dados da OS diretamente do localStorage
         localStorage.setItem('selectedClient', JSON.stringify({
           id: activeOrder.clientId,
@@ -468,7 +476,7 @@ function App() {
       const activeOrder = orders.find(order => order.status === 'in_progress');
       if (activeOrder) {
         dispatch({ type: 'SET_START_TIME', payload: new Date(activeOrder.createdAt) });
-        
+
         // Usar dados da OS diretamente do localStorage
         localStorage.setItem('selectedClient', JSON.stringify({
           id: activeOrder.clientId,
@@ -530,25 +538,25 @@ function App() {
   const handleQuantityChange = useCallback((newQuantity: string) => {
     try {
       const qty = parseInt(newQuantity);
-      
+
       if (isNaN(qty)) {
         dispatch({ type: 'SET_QUANTITY', payload: '' });
         dispatch({ type: 'SET_DEVICES', payload: [] });
         return;
       }
-      
+
       if (qty > 2000) {
         // toast.error('Quantidade máxima permitida é 2000');
         return;
       }
-      
+
       if (qty < 0) {
         // toast.error('A quantidade não pode ser negativa');
         return;
       }
-      
+
       dispatch({ type: 'SET_QUANTITY', payload: newQuantity });
-      
+
       if (state.selectedDevice && newQuantity) {
         const newDevices = Array.from({ length: qty }, (_, index) => ({
           id: state.counter + index + 1,
@@ -599,8 +607,8 @@ function App() {
 
     // Antes de salvar, garantir que o status não é null se savedDevices na State espera string
     const devicesToSave = state.devices.map(device => ({
-        ...device,
-        status: device.status || 'Conforme' // Dispositivos não marcados devem ser salvos como "Conforme"
+      ...device,
+      status: device.status || 'Conforme' // Dispositivos não marcados devem ser salvos como "Conforme"
     }));
 
     dispatch({ type: 'SAVE_DEVICES', payload: devicesToSave }); // Passar payload para SAVE_DEVICES
@@ -610,7 +618,7 @@ function App() {
 
   const createDeviceRanges = (numbers: number[]): string => {
     if (!numbers.length) return '';
-    
+
     const sortedNumbers = [...numbers].sort((a, b) => a - b);
     const ranges: string[] = [];
     let rangeStart = sortedNumbers[0];
@@ -694,7 +702,7 @@ function App() {
               if (activeOrder?.pestCounts && Array.isArray(activeOrder.pestCounts)) {
                 counts = activeOrder.pestCounts;
               }
-            } catch {}
+            } catch { }
           }
         }
 
@@ -728,7 +736,7 @@ function App() {
                 const specific = tryParseArray(localStorage.getItem(`pestCounts_${foundOrderId}`));
                 if (specific) counts = specific;
               }
-            } catch {}
+            } catch { }
           }
         }
 
@@ -742,7 +750,7 @@ function App() {
                 const current = ongoingOrders.find((o: any) => o.pestCounts && Array.isArray(o.pestCounts));
                 if (current) counts = current.pestCounts;
               }
-            } catch {}
+            } catch { }
           }
         }
 
@@ -760,7 +768,7 @@ function App() {
         return false;
       }
     };
-    
+
     if (serviceActivityElement && serviceActivityElement.getAttribute('data-service-list')) {
       try {
         const serviceListStr = serviceActivityElement.getAttribute('data-service-list') || '[]';
@@ -774,13 +782,13 @@ function App() {
           console.log('Campos obrigatórios não preenchidos:', { serviceType, targetPest });
           return false;
         }
-        
+
         // Para serviços de tratamento, verificar se há produto selecionado
         if (isTreatmentService && !state.selectedProduct) {
           console.log('Serviço de tratamento sem produto selecionado');
           return false;
         }
-        
+
         // Para monitoramento, verificar se há dispositivos selecionados
         if (serviceType === 'monitoramento' && state.savedDevices.length === 0) {
           console.log('Monitoramento sem dispositivos selecionados');
@@ -791,7 +799,7 @@ function App() {
         if (!checkPestCountsRequirement()) {
           return false;
         }
-        
+
         return true;
       }
     }
@@ -804,13 +812,13 @@ function App() {
         console.log('Campos obrigatórios não preenchidos:', { serviceType, targetPest });
         return false;
       }
-      
+
       // Para serviços de tratamento, verificar se há produto selecionado
       if (isTreatmentService && !state.selectedProduct) {
         console.log('Serviço de tratamento sem produto selecionado');
         return false;
       }
-      
+
       // Para monitoramento, verificar se há dispositivos selecionados
       if (serviceType === 'monitoramento' && state.savedDevices.length === 0) {
         console.log('Monitoramento sem dispositivos selecionados');
@@ -830,17 +838,17 @@ function App() {
           console.log('Serviço sem campos obrigatórios:', service);
           return false;
         }
-        
+
         // Para serviços de tratamento, verificar se há produto selecionado
         const isServiceTreatment = ['pulverizacao', 'atomizacao', 'termonebulizacao', 'polvilhamento', 'iscagem_gel'].includes(service.serviceType);
         if (isServiceTreatment && !service.product) {
           console.log('Serviço de tratamento sem produto:', service);
           return false;
         }
-        
+
         return true;
       });
-      
+
       if (!hasValidService) {
         console.log('Nenhum serviço válido encontrado');
         return false;
@@ -851,7 +859,7 @@ function App() {
         return false;
       }
     }
-    
+
     console.log('Todos os requisitos atendidos, OS pode ser finalizada');
     return true;
   }, [serviceType, targetPest, isTreatmentService, state.selectedProduct, state.savedDevices]);
@@ -864,7 +872,7 @@ function App() {
 
     const now = new Date();
     dispatch({ type: 'SET_END_TIME', payload: now });
-    
+
     try {
       dispatch({ type: 'SET_LOADING', payload: true });
 
@@ -874,14 +882,14 @@ function App() {
 
       // Buscar dados do cliente da OS ativa
       let client = null;
-      
+
       console.log('📱 MODO OFFLINE: Buscando dados do cliente da OS ativa...');
-      
+
       // Primeiro, obter a OS ativa
       const activeOrder = await getActiveServiceOrder();
       if (activeOrder) {
         console.log('OS ativa encontrada:', activeOrder);
-        
+
         // Buscar agendamentos do localStorage
         const schedulesData = localStorage.getItem('safeprag_schedules');
         if (schedulesData) {
@@ -889,14 +897,14 @@ function App() {
             const schedules = JSON.parse(schedulesData);
             // Buscar o agendamento específico da OS ativa
             const schedule = schedules.find((s: any) => s.id === activeOrder.scheduleId);
-            
+
             if (schedule) {
               console.log('Agendamento encontrado para a OS:', schedule);
-              
+
               // Buscar dados completos do cliente
               const clientsData = localStorage.getItem('safeprag_clients');
               let fullClientData = null;
-              
+
               if (clientsData) {
                 try {
                   const clients = JSON.parse(clientsData);
@@ -906,7 +914,7 @@ function App() {
                   console.error('Erro ao parsear dados dos clientes:', error);
                 }
               }
-              
+
               // Usar dados completos do cliente se disponível, senão usar dados do agendamento
               client = {
                 code: fullClientData?.code || schedule.clientId || 'N/A',
@@ -930,7 +938,7 @@ function App() {
           }
         }
       }
-      
+
       // Fallback para selectedClient se não encontrar dados
       if (!client) {
         const clientData = localStorage.getItem('selectedClient');
@@ -954,7 +962,7 @@ function App() {
           }
         }
       }
-      
+
       console.log('Cliente final que será usado no PDF:', client);
 
       // Agrupar dispositivos por tipo
@@ -974,7 +982,7 @@ function App() {
         if (device.number !== undefined) {
           acc[device.type].list.push(device.number.toString());
         } else {
-           acc[device.type].list.push(device.id); // Usar id como fallback
+          acc[device.type].list.push(device.id); // Usar id como fallback
         }
 
         // Processa os status do dispositivo
@@ -987,10 +995,10 @@ function App() {
             existingStatus.count++;
             // Verificar se 'number' existe antes de usar
             if (device.number !== undefined) {
-               existingStatus.devices.push(device.number);
+              existingStatus.devices.push(device.number);
             }
           } else {
-             // Verificar se 'number' existe antes de usar ao adicionar novo status
+            // Verificar se 'number' existe antes de usar ao adicionar novo status
             const devicesArray = device.number !== undefined ? [device.number] : [];
             acc[device.type].status.push({
               name: status,
@@ -1044,7 +1052,7 @@ function App() {
       // Obter a lista de serviços do componente ServiceActivity
       const serviceActivityElement = document.querySelector('div[data-service-list]');
       let serviceList = [];
-      
+
       if (serviceActivityElement && serviceActivityElement.getAttribute('data-service-list')) {
         try {
           serviceList = JSON.parse(serviceActivityElement.getAttribute('data-service-list') || '[]');
@@ -1052,10 +1060,10 @@ function App() {
           console.error('Erro ao parsear lista de serviços:', error);
         }
       }
-      
+
       // Obter contagem de pragas por dispositivo
       let pestCounts = [];
-      
+
       // Tentar obter contagens de pragas do localStorage
       const savedPestCounts = localStorage.getItem('pestCounts');
       if (savedPestCounts) {
@@ -1066,7 +1074,7 @@ function App() {
           console.error('Erro ao parsear contagens de pragas do localStorage:', error);
         }
       }
-      
+
       // Se não houver dados no localStorage, verificar dispositivos no estado
       if (pestCounts.length === 0) {
         // Verificar se há dispositivos com pragas no estado (agora device.pests pode não existir)
@@ -1089,46 +1097,46 @@ function App() {
             }));
         }
       }
-      
+
       // Log para debug da contagem de pragas
       console.log('Contagem de pragas encontrada:', pestCounts);
-      
+
       // Converter a lista de serviços para o formato esperado pelo pdfService
-      const services = serviceList.length > 0 
+      const services = serviceList.length > 0
         ? serviceList.map(service => ({
-            type: service.serviceType,
-            target: service.targetPest,
-            location: service.location,
-            product: service.product ? {
-              name: service.product.name,
-              activeIngredient: service.product.activeIngredient,
-              chemicalGroup: service.product.chemicalGroup,
-              registration: service.product.registration,
-              batch: service.product.batch,
-              validity: service.product.validity,
-              quantity: service.productAmount ? `${service.productAmount} ${service.product.quantity}` : "N/A",
-              dilution: service.product.dilution
-            } : undefined
-          }))
+          type: service.serviceType,
+          target: service.targetPest,
+          location: service.location,
+          product: service.product ? {
+            name: service.product.name,
+            activeIngredient: service.product.activeIngredient,
+            chemicalGroup: service.product.chemicalGroup,
+            registration: service.product.registration,
+            batch: service.product.batch,
+            validity: service.product.validity,
+            quantity: service.productAmount ? `${service.productAmount} ${service.product.quantity}` : "N/A",
+            dilution: service.product.dilution
+          } : undefined
+        }))
         : [{
-            type: serviceType,
-            target: targetPest,
-            location: location || "N/A",
-            product: state.selectedProduct ? {
-              name: state.selectedProduct.name,
-              activeIngredient: state.selectedProduct.activeIngredient,
-              chemicalGroup: state.selectedProduct.chemicalGroup,
-              registration: state.selectedProduct.registration,
-              batch: state.selectedProduct.batch,
-              validity: state.selectedProduct.validity,
-              quantity: productAmount ? `${productAmount} ${state.selectedProduct.quantity}` : "N/A",
-              dilution: state.selectedProduct.dilution
-            } : undefined
-          }];
-      
+          type: serviceType,
+          target: targetPest,
+          location: location || "N/A",
+          product: state.selectedProduct ? {
+            name: state.selectedProduct.name,
+            activeIngredient: state.selectedProduct.activeIngredient,
+            chemicalGroup: state.selectedProduct.chemicalGroup,
+            registration: state.selectedProduct.registration,
+            batch: state.selectedProduct.batch,
+            validity: state.selectedProduct.validity,
+            quantity: productAmount ? `${productAmount} ${state.selectedProduct.quantity}` : "N/A",
+            dilution: state.selectedProduct.dilution
+          } : undefined
+        }];
+
       // Log para debug dos serviços
       console.log('Serviços a serem incluídos no PDF:', services);
-      
+
       const serviceData = {
         orderNumber: `${state.serviceOrders.length + 1}`,
         date: formattedDate,
@@ -1174,7 +1182,7 @@ function App() {
       // Gerar e baixar o PDF
       try {
         const pdfBlob = await generateServiceOrderPDF(serviceData as any);
-        
+
         // Converter blob para base64 usando Promise
         const base64Data = await new Promise<string>((resolve, reject) => {
           const reader = new FileReader();
@@ -1190,20 +1198,20 @@ function App() {
           reader.onerror = () => reject(reader.error);
           reader.readAsDataURL(pdfBlob);
         });
-        
+
         // Usar o novo serviço de compartilhamento
         const success = await fileSharingService.shareFile({
           filename: `ordem-servico-${serviceData.orderNumber}.pdf`,
           data: base64Data,
           mimeType: 'application/pdf'
         });
-        
+
         if (!success) {
           console.error('Falha no compartilhamento do arquivo');
           // Não fazer fallback para download, apenas mostrar erro
           return;
         }
-        
+
         // Adicionar à lista de ordens de serviço
         const url = window.URL.createObjectURL(pdfBlob);
         dispatch({
@@ -1235,16 +1243,16 @@ function App() {
         localStorage.removeItem('serviceStartTime');
 
         // showNotification('Ordem de serviço finalizada com sucesso!', 'success');
-        
+
         // Obter o ID do agendamento ativo e finalizar a OS corretamente
         const activeOrder = await getActiveServiceOrder();
         if (activeOrder) {
           try {
             // Usar a função finishServiceOrder que faz toda a lógica correta
             await finishServiceOrder(activeOrder.id);
-            
+
             // Disparar evento de finalização com sucesso
-            const finishEvent = new CustomEvent('serviceOrderFinished', { 
+            const finishEvent = new CustomEvent('serviceOrderFinished', {
               detail: { success: true }
             });
             window.dispatchEvent(finishEvent);
@@ -1254,7 +1262,7 @@ function App() {
             return;
           }
         }
-        
+
         setActiveTab('schedule');
       } catch (pdfError) {
         console.error('Erro ao gerar PDF:', pdfError);
@@ -1332,9 +1340,9 @@ function App() {
         if (device.number !== undefined) {
           acc[device.type].list.push(device.number.toString());
         } else {
-           acc[device.type].list.push(device.id); // Usar id como fallback
+          acc[device.type].list.push(device.id); // Usar id como fallback
         }
-        
+
         // Processar os status do dispositivo - garantir que seja um array de strings
         // Regra: status vazio ou "Não definido"/variações devem ser tratados como "Conforme" no relatório PDF
         const normalizeStatus = (s: string | null | undefined): string => {
@@ -1360,10 +1368,10 @@ function App() {
             existingStatus.count++;
             // Verificar se 'number' existe antes de usar
             if (device.number !== undefined) {
-               existingStatus.devices.push(device.number);
+              existingStatus.devices.push(device.number);
             }
           } else {
-             // Verificar se 'number' existe antes de usar ao adicionar novo status
+            // Verificar se 'number' existe antes de usar ao adicionar novo status
             const devicesArray = device.number !== undefined ? [device.number] : [];
             acc[device.type].status.push({
               name: status,
@@ -1432,10 +1440,10 @@ function App() {
           email: "N/A" // Adicionado campo email
         },
         service: { // A estrutura de serviceData.service pode ser diferente da esperada
-           type: serviceData.serviceType,
-           target: serviceData.targetPest || targetPest,
-           location: serviceData.location || location,
-           product: serviceData.product // Usar product do serviceData se existir
+          type: serviceData.serviceType,
+          target: serviceData.targetPest || targetPest,
+          location: serviceData.location || location,
+          product: serviceData.product // Usar product do serviceData se existir
         } as any, // Usar any temporariamente
         product: state.selectedProduct ? { // Usar selectedProduct do estado se estiver presente
           name: state.selectedProduct?.name || "N/A",
@@ -1457,33 +1465,33 @@ function App() {
       dispatch({
         type: 'ADD_SERVICE_ORDER',
         payload: { // Adicionar 'as any' temporariamente para resolver o erro de tipagem aqui
-           // Os dados aqui devem corresponder EXATAMENTE à interface ServiceOrder
-           id: state.serviceOrders.length + 1, // ID sequencial
-           createdAt: new Date().toISOString(), // Data de criação
-           updatedAt: new Date().toISOString(), // Data de atualização
-           status: 'completed', // Status inicial
-           devices: state.savedDevices.map(device => ({ // Mapear savedDevices para a estrutura esperada
-              id: device.id,
-              type: device.type,
-              status: device.status || '', // Garantir que status não seja null aqui se a interface não permitir
-              quantity: device.quantity,
-              number: (device as any).number // Acessar number com any
-           })),
-           pdfUrl: pdfUrl,
-           client: { // Mapear client do serviceData para a estrutura esperada
-             code: serviceData.client.code || "N/A",
-             name: serviceData.client.name || "N/A",
-             address: serviceData.client.address || "N/A" // Usar address do client data
-           },
-           // A propriedade 'service' não existe na interface ServiceOrder, remover ou ajustar
-           // service: serviceData.service,
-           // A propriedade 'product' não existe na interface ServiceOrder, remover ou ajustar
-           // product: serviceData.product,
-           observations: observations || "",
-           // As propriedades startTime, endTime, signatures não existem diretamente na interface ServiceOrder, remover ou ajustar
-           // startTime: serviceData.time,
-           // endTime: serviceData.endTime,
-           // signatures: serviceData.signatures
+          // Os dados aqui devem corresponder EXATAMENTE à interface ServiceOrder
+          id: state.serviceOrders.length + 1, // ID sequencial
+          createdAt: new Date().toISOString(), // Data de criação
+          updatedAt: new Date().toISOString(), // Data de atualização
+          status: 'completed', // Status inicial
+          devices: state.savedDevices.map(device => ({ // Mapear savedDevices para a estrutura esperada
+            id: device.id,
+            type: device.type,
+            status: device.status || '', // Garantir que status não seja null aqui se a interface não permitir
+            quantity: device.quantity,
+            number: (device as any).number // Acessar number com any
+          })),
+          pdfUrl: pdfUrl,
+          client: { // Mapear client do serviceData para a estrutura esperada
+            code: serviceData.client.code || "N/A",
+            name: serviceData.client.name || "N/A",
+            address: serviceData.client.address || "N/A" // Usar address do client data
+          },
+          // A propriedade 'service' não existe na interface ServiceOrder, remover ou ajustar
+          // service: serviceData.service,
+          // A propriedade 'product' não existe na interface ServiceOrder, remover ou ajustar
+          // product: serviceData.product,
+          observations: observations || "",
+          // As propriedades startTime, endTime, signatures não existem diretamente na interface ServiceOrder, remover ou ajustar
+          // startTime: serviceData.time,
+          // endTime: serviceData.endTime,
+          // signatures: serviceData.signatures
         } as any // Usar any temporariamente para o objeto completo
       });
 
@@ -1499,7 +1507,7 @@ function App() {
   const handleServiceTypeChange = (e: React.ChangeEvent<HTMLSelectElement>) => {
     const newServiceType = e.target.value;
     setServiceType(newServiceType);
-    
+
     // Verifica se o novo tipo de serviço NÃO usa produto
     const treatmentTypes = ['pulverizacao', 'atomizacao', 'termonebulizacao', 'polvilhamento', 'iscagem_com_gel'];
     const isProductService = treatmentTypes.includes(newServiceType.toLowerCase()) || newServiceType.toLowerCase() === 'monitoramento';
@@ -1521,11 +1529,40 @@ function App() {
 
   console.log('Estado atual:', { activeTab, state });
 
-  const navItems = [
+  const allItems = [
     { id: 'schedule', label: 'Agenda', icon: Calendar },
     { id: 'activity', label: 'Atividade', icon: Activity },
+    { id: 'downloads', label: 'Downloads', icon: Download },
     { id: 'settings', label: 'Configurações', icon: Settings },
   ];
+
+  // Define itens permitidos por papel
+  const allowedIdsByRole: Record<string, string[]> = {
+    admin: ['schedule', 'activity', 'downloads', 'settings'],
+    controlador: ['schedule', 'activity', 'downloads'],
+    cliente: ['downloads']
+  };
+
+  const allowedIds = allowedIdsByRole[role || 'cliente'] || ['downloads'];
+  const navItems = allItems.filter(item => allowedIds.includes(item.id));
+
+  // Ajusta aba ativa se não for permitida
+  useEffect(() => {
+    if (!allowedIds.includes(activeTab)) {
+      // Define aba padrão por papel
+      const defaultTab = role === 'cliente' ? 'downloads' : (role === 'controlador' ? 'schedule' : 'schedule');
+      setActiveTab(defaultTab);
+    }
+  }, [role]);
+
+  useEffect(() => {
+    const params = new URLSearchParams(routerLocation.search || '');
+    const tab = params.get('tab');
+    if (tab === 'activity') setActiveTab('activity');
+    else if (tab === 'schedule') setActiveTab('schedule');
+    else if (tab === 'downloads') setActiveTab('downloads');
+    else if (tab === 'settings') setActiveTab('settings');
+  }, [routerLocation.search]);
 
   const getActiveServiceOrder = () => {
     const savedOrders = localStorage.getItem('safeprag_service_orders');
@@ -1564,10 +1601,10 @@ function App() {
 
   if (isLoading) {
     return (
-      <div style={{ 
-        display: 'flex', 
-        justifyContent: 'center', 
-        alignItems: 'center', 
+      <div style={{
+        display: 'flex',
+        justifyContent: 'center',
+        alignItems: 'center',
         height: '100vh',
         flexDirection: 'column',
         gap: '1rem'
@@ -1584,61 +1621,76 @@ function App() {
     <KeepAliveProvider>
       <div className="flex flex-col h-screen bg-gray-100">
         {activeTab === 'schedule' && (
-          <ServiceScheduler 
-            onTabChange={handleTabChange} 
-            onOSStart={() => handleTabChange('activity')} 
-          />
+          <RequireRole allow={["admin", "controlador"]}>
+            <ServiceScheduler
+              onTabChange={handleTabChange}
+              onOSStart={() => handleTabChange('activity')}
+            />
+          </RequireRole>
         )}
         {activeTab === 'activity' && (
-          <ServiceActivity
-            serviceType={serviceType}
-            targetPest={targetPest}
-            location={location}
-            observations={observations}
-            applicationMethod={applicationMethod}
-            productAmount={productAmount}
-            state={state}
-            startTime={state.startTime}
-            endTime={state.endTime}
-            isLoading={state.isLoading}
-            showDeviceModal={showDeviceModal}
-            onServiceTypeChange={handleServiceTypeChange}
-            onTargetPestChange={setTargetPest}
-            onLocationChange={setLocation}
-            onApplicationMethodChange={setApplicationMethod}
-            onProductAmountChange={setProductAmount}
-            onObservationsChange={setObservations}
-            onOpenDeviceModal={handleOpenDeviceModal}
-            onCloseDeviceModal={() => setShowDeviceModal(false)}
-            onFinishOS={handleFinishOS}
-            onApproveOS={() => setShowApprovalModal(true)}
-            onProductSelect={(product) => {
-              dispatch({
-                type: 'SET_SELECTED_PRODUCT',
-                payload: {
-                  name: product.name,
-                  activeIngredient: product.activeIngredient,
-                  chemicalGroup: product.chemicalGroup,
-                  registration: product.registration,
-                  batch: product.batch,
-                  validity: product.expirationDate,
-                  quantity: product.measure,
-                  dilution: product.diluent
-                }
-              });
-            }}
-            onDeviceChange={handleDeviceChange}
-            onStatusChange={handleStatusChange}
-            onQuantityChange={handleQuantityChange}
-            onDeviceClick={handleDeviceClick}
-            onSelectAll={handleSelectAll}
-            onSaveDevices={handleSaveDevices}
-            canFinishOS={canFinishOS}
-            canSave={isTreatmentService || (!state.isLoading && state.devices.length > 0)}
-            onProductClear={() => dispatch({ type: 'CLEAR_SELECTED_PRODUCT' })}
-          />
+          <RequireRole allow={["admin", "controlador"]}>
+            <ServiceActivity
+              serviceType={serviceType}
+              targetPest={targetPest}
+              location={location}
+              observations={observations}
+              applicationMethod={applicationMethod}
+              productAmount={productAmount}
+              state={state}
+              startTime={state.startTime}
+              endTime={state.endTime}
+              isLoading={state.isLoading}
+              showDeviceModal={showDeviceModal}
+              onServiceTypeChange={handleServiceTypeChange}
+              onTargetPestChange={setTargetPest}
+              onLocationChange={setLocation}
+              onApplicationMethodChange={setApplicationMethod}
+              onProductAmountChange={setProductAmount}
+              onObservationsChange={setObservations}
+              onOpenDeviceModal={handleOpenDeviceModal}
+              onCloseDeviceModal={() => setShowDeviceModal(false)}
+              onFinishOS={handleFinishOS}
+              onApproveOS={() => setShowApprovalModal(true)}
+              onProductSelect={(product) => {
+                dispatch({
+                  type: 'SET_SELECTED_PRODUCT',
+                  payload: {
+                    name: product.name,
+                    activeIngredient: product.activeIngredient,
+                    chemicalGroup: product.chemicalGroup,
+                    registration: product.registration,
+                    batch: product.batch,
+                    validity: product.expirationDate,
+                    quantity: product.measure,
+                    dilution: product.diluent
+                  }
+                });
+              }}
+              onDeviceChange={handleDeviceChange}
+              onStatusChange={handleStatusChange}
+              onQuantityChange={handleQuantityChange}
+              onDeviceClick={handleDeviceClick}
+              onSelectAll={handleSelectAll}
+              onSaveDevices={handleSaveDevices}
+              canFinishOS={canFinishOS}
+              canSave={isTreatmentService || (!state.isLoading && state.devices.length > 0)}
+              onProductClear={() => dispatch({ type: 'CLEAR_SELECTED_PRODUCT' })}
+            />
+          </RequireRole>
         )}
-        {activeTab === 'settings' && <AdminPage />}
+        {activeTab === 'downloads' && (
+          <RequireRole allow={["admin", "controlador", "cliente"]}>
+            <div className="px-4 py-6">
+              <DownloadsManagement />
+            </div>
+          </RequireRole>
+        )}
+        {activeTab === 'settings' && (
+          <RequireRole allow={["admin"]}>
+            <AdminPage />
+          </RequireRole>
+        )}
       </div>
 
       {/* Notificações removidas */}

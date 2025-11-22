@@ -14,8 +14,13 @@ import { generateServiceOrderPDF } from '../../services/pdfService';
 import { activityService } from '../../services/activityService';
 import { ServiceOrderPDFData } from '../../types/pdf.types';
 import * as ordemServicoService from '../../services/ordemServicoService';
+import { useAuth } from '../../contexts/AuthContext';
+import { useNavigate } from 'react-router-dom';
+import { SystemMessageBox } from '../../components/SystemMessageBox';
 
 export function SchedulingPage() {
+  const { role, companyId } = useAuth();
+  const navigate = useNavigate();
   const [clients, setClients] = useState<Schedule[]>([]);
   const [selectedClient, setSelectedClient] = useState<Schedule | null>(null);
   const [isModalOpen, setIsModalOpen] = useState(false);
@@ -26,6 +31,8 @@ export function SchedulingPage() {
   const [hasActiveOS, setHasActiveOS] = useState(false);
   const [checkingActiveOS, setCheckingActiveOS] = useState(false);
   const [endTime, setEndTime] = useState<string | null>(null);
+  const [messageOpen, setMessageOpen] = useState(false);
+  const [messageConfig, setMessageConfig] = useState<{ title?: string; message: string; variant?: 'warning' | 'error' | 'info'; primaryLabel?: string; onPrimary?: () => void; secondaryLabel?: string; onSecondary?: () => void } | null>(null);
 
   useEffect(() => {
     loadSchedules();
@@ -42,9 +49,9 @@ export function SchedulingPage() {
     const handleScheduleUpdate = (event: CustomEvent) => {
       console.log('Evento scheduleUpdate recebido:', event.detail);
       const { scheduleId, status, schedule } = event.detail;
-      
+
       console.log('Atualizando agendamento:', { scheduleId, status });
-      
+
       // Atualiza o estado local
       setClients(prevClients => {
         console.log('Clientes antes da atualização:', prevClients.map(c => ({ id: c.id, status: c.status })));
@@ -56,7 +63,7 @@ export function SchedulingPage() {
         console.log('Clientes após a atualização:', updatedClients.map(c => ({ id: c.id, status: c.status })));
         return updatedClients;
       });
-      
+
       // Se o agendamento selecionado foi atualizado, atualiza ele também
       if (selectedClient && selectedClient.id === scheduleId) {
         console.log('Atualizando agendamento selecionado:', { selectedClientId: selectedClient.id, newStatus: status });
@@ -65,7 +72,7 @@ export function SchedulingPage() {
     };
 
     window.addEventListener('scheduleUpdate', handleScheduleUpdate as EventListener);
-    
+
     return () => {
       window.removeEventListener('scheduleUpdate', handleScheduleUpdate as EventListener);
     };
@@ -75,7 +82,7 @@ export function SchedulingPage() {
     try {
       const data = await schedulingService.getSchedules(filters);
       setClients(data);
-      
+
       if (isActivityPageOpen && selectedClient) {
         const updatedSelectedClient = data.find(client => client.id === selectedClient.id);
         if (updatedSelectedClient) {
@@ -91,7 +98,7 @@ export function SchedulingPage() {
   const handleClientClick = async (client: Schedule) => {
     setSelectedClient(client);
     setIsModalOpen(true);
-    
+
     // Verifica assincronamente se há uma OS ativa para este agendamento
     setCheckingActiveOS(true);
     try {
@@ -111,12 +118,12 @@ export function SchedulingPage() {
     if (!selectedClient) return;
 
     try {
-      await ordemServicoService.createServiceOrder(selectedClient);
+      await ordemServicoService.createServiceOrder(selectedClient, companyId || 'default');
 
       // 2. Atualiza o estado local para refletir o início do serviço
       const now = new Date();
       const formattedStartTime = format(now, 'HH:mm', { locale: ptBR });
-      
+
       setStartTime(formattedStartTime);
       setClients(prevClients =>
         prevClients.map(c =>
@@ -130,17 +137,63 @@ export function SchedulingPage() {
         status: 'in_progress' as const,
         startTime: formattedStartTime
       } : null);
-      
+
       // 3. Abre a página de atividade
       setIsModalOpen(false);
       setIsActivityPageOpen(true);
-      
+
     } catch (error: any) {
       console.error('Erro ao iniciar serviço:', error);
-      // toast.error(`Erro ao iniciar serviço: ${error.message}`);
-      if (error.message.includes('duplicate key value violates unique constraint')) {
-        // toast.error('Você já possui uma Ordem de Serviço em andamento. Finalize-a antes de iniciar uma nova.');
+      const msg = error?.message ? String(error.message) : 'Erro ao iniciar serviço';
+      if (msg.toLowerCase().includes('assinatura inativa')) {
+        const isController = role === 'controlador';
+        const isAdmin = role === 'admin';
+        if (isController) {
+          setMessageConfig({
+            title: 'Atenção',
+            message: 'Não é possível iniciar ordem de serviço, entre em contato com o seu gestor!',
+            variant: 'warning',
+            primaryLabel: 'Entendi',
+            onPrimary: () => setMessageOpen(false),
+          });
+          setMessageOpen(true);
+        } else if (isAdmin) {
+          setMessageConfig({
+            title: 'Assinatura inativa',
+            message: 'Assinatura inativa. Não é possível iniciar ordem de serviço, escolha um plano!',
+            variant: 'error',
+            primaryLabel: 'Escolher plano',
+            onPrimary: () => {
+              setMessageOpen(false);
+              navigate('/configuracoes/plano-mensal');
+            },
+            secondaryLabel: 'Cancelar',
+            onSecondary: () => setMessageOpen(false),
+          });
+          setMessageOpen(true);
+        } else {
+          setMessageConfig({
+            title: 'Atenção',
+            message: 'Assinatura inativa. Entre em contato com o administrador.',
+            variant: 'warning',
+            primaryLabel: 'Ok',
+            onPrimary: () => setMessageOpen(false),
+          });
+          setMessageOpen(true);
+        }
+        return;
+      }
+      if (error?.message?.includes('duplicate key value violates unique constraint')) {
         console.error('Tentativa de iniciar uma segunda OS em andamento pelo mesmo usuário.');
+      } else {
+        setMessageConfig({
+          title: 'Erro',
+          message: msg,
+          variant: 'error',
+          primaryLabel: 'Ok',
+          onPrimary: () => setMessageOpen(false),
+        });
+        setMessageOpen(true);
       }
     }
   };
@@ -160,14 +213,14 @@ export function SchedulingPage() {
       const now = new Date();
       const formattedEndTime = format(now, 'HH:mm', { locale: ptBR });
       setEndTime(formattedEndTime);
-      
+
       const activeOrder = await activityService.getActiveServiceOrder();
       if (!activeOrder) {
         throw new Error("Nenhuma ordem de serviço ativa encontrada para finalizar.");
       }
-      
+
       console.log('Ordem de serviço ativa encontrada:', activeOrder);
-      
+
       const serviceList = await activityService.loadServiceList(activeOrder.id);
       const pestCounts = await activityService.loadPestCounts(activeOrder.id);
       const devices = await activityService.loadDevices(activeOrder.id);
@@ -204,12 +257,12 @@ export function SchedulingPage() {
         observations: activeOrder.observations || '',
         signatures: {
           serviceResponsible: '',
-        technicalResponsible: '',
+          technicalResponsible: '',
           clientRepresentative: ''
         },
       };
 
-      await generateServiceOrderPDF(pdfData);
+      await generateServiceOrderPDF(pdfData, companyId || 'default');
 
       // Atualiza a OS para 'completed'
       console.log('Atualizando OS para concluído...');
@@ -217,7 +270,7 @@ export function SchedulingPage() {
         .from('service_orders')
         .update({ status: 'completed', end_time: new Date().toISOString() })
         .eq('id', activeOrder.id);
-      
+
       console.log('Resultado da atualização da OS:', { orderData, orderError });
       if (orderError) {
         throw new Error(`Erro ao atualizar a Ordem de Serviço: ${orderError.message}`);
@@ -230,13 +283,13 @@ export function SchedulingPage() {
       console.log('Agendamento atualizado para concluído com sucesso');
 
       activityService.cleanupActivityData(activeOrder.id);
-      
+
       setIsActivityPageOpen(false);
-      
+
       // Força recarregamento dos agendamentos para garantir sincronização
       console.log('Recarregando agendamentos...');
       await loadSchedules();
-      
+
       console.log('Serviço finalizado com sucesso! O status foi atualizado automaticamente via evento.');
 
     } catch (error) {
@@ -340,12 +393,12 @@ export function SchedulingPage() {
               <div className="mt-4">
                 <span className={`inline-block px-3 py-1 rounded-full text-sm font-medium
                   ${client.status === 'pending' ? 'bg-blue-100 text-blue-800' :
-                  client.status === 'in_progress' ? 'bg-yellow-100 text-yellow-800' :
-                  'bg-green-100 text-green-800'}`}
+                    client.status === 'in_progress' ? 'bg-yellow-100 text-yellow-800' :
+                      'bg-green-100 text-green-800'}`}
                 >
                   {client.status === 'pending' ? 'Agendado' :
-                   client.status === 'in_progress' ? 'Em andamento' :
-                   'Concluído'}
+                    client.status === 'in_progress' ? 'Em andamento' :
+                      'Concluído'}
                 </span>
               </div>
             </div>
@@ -370,7 +423,7 @@ export function SchedulingPage() {
                 <X className="w-6 h-6" />
               </button>
             </div>
-            
+
             <div className="space-y-6">
               <div>
                 <h3 className="text-lg font-medium mb-3">Dados do Cliente</h3>
@@ -379,22 +432,22 @@ export function SchedulingPage() {
                     <User className="w-5 h-5 text-gray-500" />
                     <span>{selectedClient.clientName}</span>
                   </div>
-                  
+
                   <div className="flex items-start gap-2">
                     <MapPin className="w-5 h-5 text-gray-500 mt-1" />
                     <span className="flex-1">{selectedClient.clientAddress}</span>
                   </div>
-                  
+
                   <div className="flex items-center gap-2">
                     <User className="w-5 h-5 text-gray-500" />
                     <span>Contato: {selectedClient.clientContact || 'Não informado'}</span>
                   </div>
-                  
+
                   <div className="flex items-center gap-2">
                     <Phone className="w-5 h-5 text-gray-500" />
                     <span>{selectedClient.clientPhone}</span>
                   </div>
-                  
+
                   <div className="flex items-center gap-2">
                     <Clock className="w-5 h-5 text-gray-500" />
                     <span>Horário: {selectedClient.startTime} - {selectedClient.endTime}</span>
@@ -444,7 +497,7 @@ export function SchedulingPage() {
                   onClick={() => {
                     // Implementar função de não atendimento
                     // toast.info('Funcionalidade em desenvolvimento');
-    console.log('Funcionalidade em desenvolvimento');
+                    console.log('Funcionalidade em desenvolvimento');
                   }}
                 >
                   <X className="w-5 h-5" />
@@ -465,7 +518,7 @@ export function SchedulingPage() {
             className="bg-white rounded-lg shadow-lg p-6 pb-20 max-w-lg w-full mx-4 overflow-y-auto max-h-[90vh]"
           >
             <h2 className="text-2xl font-bold mb-6">Ordem de Serviço</h2>
-            
+
             <div className="space-y-4">
               <div>
                 <label className="block text-sm font-medium text-gray-700 mb-2">
@@ -558,6 +611,17 @@ export function SchedulingPage() {
         <NewScheduleModal
           onClose={() => setIsNewScheduleModalOpen(false)}
           onSuccess={loadSchedules}
+        />
+      )}
+      {messageConfig && (
+        <SystemMessageBox
+          isOpen={messageOpen}
+          onClose={() => setMessageOpen(false)}
+          title={messageConfig.title}
+          message={messageConfig.message}
+          variant={messageConfig.variant}
+          primaryAction={{ label: messageConfig.primaryLabel || 'Ok', onClick: messageConfig.onPrimary || (() => setMessageOpen(false)) }}
+          secondaryAction={messageConfig.secondaryLabel && messageConfig.onSecondary ? { label: messageConfig.secondaryLabel, onClick: messageConfig.onSecondary } : undefined}
         />
       )}
     </div>

@@ -1,21 +1,27 @@
 import React, { useState, useEffect, useRef } from 'react';
 // import { toast } from 'react-toastify';
 import { AdminTabs } from './AdminTabs';
+
 import BackupMaintenance from './BackupMaintenance/BackupMaintenance';
 import { ClientForm } from './ClientForm';
 import { ProductForm } from './ProductForm';
 import { ImageUpload } from './ImageUpload';
-import { Shield, Trash2, RefreshCw, Database, Building2, Users, Package, User, Pen, Eye, X, Cloud } from 'lucide-react';
+import { Trash2, Pen, Eye, X } from 'lucide-react';
 import { STORAGE_KEYS, backupAllData, restoreBackup } from '../services/storageKeys';
-import { finishAllActiveServiceOrders, cleanupSystemData } from '../services/ordemServicoService';
 import { Modal } from './Modal';
+import { SuccessModal } from './SuccessModal';
 import DownloadsManagement from './ServiceOrders/DownloadsManagement';
-import { Link } from 'react-router-dom';
-import { MigrationTool } from './MigrationTool';
-import * as companyService from '../services/companyService';
+import { useLocation, useNavigate } from 'react-router-dom';
+import {
+  getCompanyFromLocalStorage as getCompanyBackup,
+  saveCompanyToLocalStorage as saveCompanyBackup,
+  deleteCompanyFromLocalStorage as deleteCompanyBackup,
+  uploadCompanyLogoToLocalStorage as uploadLogoBackup
+} from '../services/companyService';
+
 
 interface CompanyData {
-  id?: number;
+  id?: string;
   name: string;
   cnpj: string;
   phone: string;
@@ -47,7 +53,6 @@ interface UserData {
   tecnicoSignature?: string;
 }
 
-const COMPANY_STORAGE_KEY = STORAGE_KEYS.COMPANY;
 
 const emptyCompanyData: CompanyData = {
   name: '',
@@ -68,9 +73,9 @@ const emptyCompanyData: CompanyData = {
 
 export const AdminPage = () => {
   const [activeTab, setActiveTab] = useState('empresa');
-  const [isCompanyModalOpen, setIsCompanyModalOpen] = useState(false);
-  const [isSignatureModalOpen, setIsSignatureModalOpen] = useState(false);
-  const [companyLogo, setCompanyLogo] = useState<File | null>(null);
+  const location = useLocation();
+  const navigate = useNavigate();
+
   const [showSavedData, setShowSavedData] = useState(false);
   const [companyData, setCompanyData] = useState<CompanyData>(() => {
     const savedData = localStorage.getItem(STORAGE_KEYS.COMPANY);
@@ -98,10 +103,10 @@ export const AdminPage = () => {
   });
   const [userData, setUserData] = useState<UserData>(() => {
     const saved = localStorage.getItem(STORAGE_KEYS.USER_DATA) || localStorage.getItem('userData');
-    return saved ? JSON.parse(saved) : { 
-      name: '', 
-      phone: '', 
-      email: '', 
+    return saved ? JSON.parse(saved) : {
+      name: '',
+      phone: '',
+      email: '',
       signatureType: 'controlador',
       tecnicoName: '',
       tecnicoCrea: '',
@@ -125,11 +130,19 @@ export const AdminPage = () => {
   const [signatureViewImageSrc, setSignatureViewImageSrc] = useState<string | undefined>(undefined);
   const [signatureViewTitle, setSignatureViewTitle] = useState('');
 
+  const [isSuccessModalOpen, setIsSuccessModalOpen] = useState(false);
+  const [successMessage, setSuccessMessage] = useState('');
+
+  const showSuccess = (message: string) => {
+    setSuccessMessage(message);
+    setIsSuccessModalOpen(true);
+  };
+
   useEffect(() => {
     const loadCompanyData = async () => {
       try {
         // Carregar dados APENAS do localStorage (arquivo JSON de backup)
-        const localData = companyService.getCompany();
+        const localData = getCompanyBackup();
         if (localData) {
           setCompanyData({
             ...emptyCompanyData,
@@ -157,6 +170,37 @@ export const AdminPage = () => {
     };
     loadCompanyData();
   }, []);
+
+  useEffect(() => {
+    const pathname = location.pathname;
+    if (pathname.endsWith('/configuracoes/empresa')) {
+      setActiveTab('empresa');
+    } else if (pathname.endsWith('/configuracoes/produtos')) {
+      setActiveTab('produtos');
+    } else if (pathname.endsWith('/configuracoes/downloads')) {
+      setActiveTab('downloads');
+    } else if (pathname.endsWith('/configuracoes/clientes')) {
+      setActiveTab('clientes');
+    } else if (pathname.endsWith('/configuracoes/assinaturas')) {
+      setActiveTab('usuarios');
+    } else if (pathname.endsWith('/configuracoes/backup')) {
+      setActiveTab('backup');
+    }
+  }, [location.pathname]);
+
+  useEffect(() => {
+    let path = '/configuracoes/empresa';
+    if (activeTab === 'empresa') path = '/configuracoes/empresa';
+    else if (activeTab === 'produtos') path = '/configuracoes/produtos';
+    else if (activeTab === 'downloads') path = '/configuracoes/downloads';
+    else if (activeTab === 'clientes') path = '/configuracoes/clientes';
+    else if (activeTab === 'usuarios') path = '/configuracoes/assinaturas';
+    else if (activeTab === 'backup') path = '/configuracoes/backup';
+
+    if (location.pathname !== path) {
+      navigate(path, { replace: true });
+    }
+  }, [activeTab]);
 
   useEffect(() => {
     if (activeTab === 'userData') {
@@ -209,10 +253,11 @@ export const AdminPage = () => {
   const handleSave = async () => {
     try {
       // Salvar no localStorage
-      await companyService.saveCompany(companyData);
-      
+      await saveCompanyBackup(companyData);
+
       console.log('Dados da empresa salvos com sucesso!');
       setShowSavedData(true);
+      showSuccess('Dados da empresa salvos com sucesso!');
     } catch (error) {
       console.error('Erro ao salvar dados:', error);
       // toast.error('Erro ao salvar dados da empresa');
@@ -224,11 +269,10 @@ export const AdminPage = () => {
     if (window.confirm('Tem certeza que deseja excluir os dados da empresa?')) {
       try {
         // Deletar do localStorage
-        companyService.deleteCompany();
-        
+        deleteCompanyBackup();
+
         // Resetar o estado
         setCompanyData(emptyCompanyData);
-        setCompanyLogo(null);
         setShowSavedData(false);
         // toast.success('Dados da empresa excluídos com sucesso!');
         console.log('Dados da empresa excluídos com sucesso!');
@@ -240,13 +284,14 @@ export const AdminPage = () => {
 
   const handleLogoUpload = async (file: File) => {
     try {
-      // Usar o serviço de empresa para fazer upload do logo
-      const logoUrl = await companyService.uploadCompanyLogo(file);
+      // URL base64 para localStorage
+      const logoUrl = await uploadLogoBackup(file);
       setCompanyData(prev => ({
         ...prev,
         logo_url: logoUrl
       }));
       console.log('Logo da empresa atualizado com sucesso!');
+      showSuccess('Logo da empresa atualizado com sucesso!');
     } catch (error) {
       console.error('Erro ao fazer upload do logo:', error);
     }
@@ -254,7 +299,7 @@ export const AdminPage = () => {
 
   const handleInputChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     const { name, value } = e.target;
-    
+
     if (name.includes('.')) {
       const [parent, child] = name.split('.');
       if (parent === 'environmental_license') {
@@ -313,9 +358,9 @@ export const AdminPage = () => {
       try {
         const backup = JSON.parse(e.target?.result as string);
         restoreBackup(backup);
-        
+
         // Recarregar dados da empresa após o restore
-        const localData = companyService.getCompany();
+        const localData = getCompanyBackup();
         if (localData) {
           setCompanyData({
             ...emptyCompanyData,
@@ -332,7 +377,7 @@ export const AdminPage = () => {
           setShowSavedData(true);
           console.log('Dados da empresa carregados do backup:', localData);
         }
-        
+
         // toast.success('Backup restaurado com sucesso!');
         console.log('Backup restaurado com sucesso!');
       } catch (error) {
@@ -357,6 +402,7 @@ export const AdminPage = () => {
       localStorage.setItem('userData', JSON.stringify(updatedUserData));
       // toast.success('Dados do Controlador salvos com sucesso!');
       console.log('Dados do Controlador salvos com sucesso!');
+      showSuccess('Dados do Controlador salvos com sucesso!');
     } catch (error) {
       // toast.error('Erro ao salvar dados do Controlador');
       console.error('Erro ao salvar dados do Controlador');
@@ -380,6 +426,7 @@ export const AdminPage = () => {
       localStorage.setItem('userData', JSON.stringify(updatedUserData));
       // toast.success('Dados do Responsável Técnico salvos com sucesso!');
       console.log('Dados do Responsável Técnico salvos com sucesso!');
+      showSuccess('Dados do Responsável Técnico salvos com sucesso!');
     } catch (error) {
       // toast.error('Erro ao salvar dados do Responsável Técnico');
       console.error('Erro ao salvar dados do Responsável Técnico');
@@ -572,7 +619,7 @@ export const AdminPage = () => {
           <div className="flex justify-between items-center mb-4 sm:mb-6">
             <h2 className="text-xl sm:text-2xl font-bold text-center">Empresa</h2>
           </div>
-          
+
           <AdminTabs activeTab={activeTab} onTabChange={setActiveTab} />
 
           <div className="mt-4 sm:mt-6">
@@ -580,8 +627,8 @@ export const AdminPage = () => {
               <div className="bg-white shadow rounded-lg p-3 sm:p-6">
                 <form onSubmit={handleSubmit} className="space-y-4">
                   <div className="mb-6">
-                    <ImageUpload 
-                      onFileSelect={handleLogoUpload} 
+                    <ImageUpload
+                      onFileSelect={handleLogoUpload}
                       currentImageUrl={companyData.logo_url || ""}
                     />
                   </div>
@@ -759,6 +806,8 @@ export const AdminPage = () => {
                 <ProductForm />
               </div>
             )}
+
+
 
             {activeTab === 'usuarios' && (
               <div className="bg-white shadow rounded-lg p-3 sm:p-6">
@@ -1002,6 +1051,8 @@ export const AdminPage = () => {
                 <BackupMaintenance />
               </div>
             )}
+
+
           </div>
         </div>
 
@@ -1010,7 +1061,7 @@ export const AdminPage = () => {
           {/* ... existing code ... */}
         </div>
       </div>
-      
+
       {/* Modal de Visualização da Assinatura */}
       <Modal
         isOpen={isSignatureViewModalOpen}
@@ -1030,9 +1081,9 @@ export const AdminPage = () => {
           </div>
           <div className="flex justify-center">
             {signatureViewImageSrc ? (
-              <img 
-                src={signatureViewImageSrc} 
-                alt="Assinatura Salva" 
+              <img
+                src={signatureViewImageSrc}
+                alt="Assinatura Salva"
                 style={{ maxWidth: '100%', maxHeight: '400px', background: 'white' }}
                 className="border border-gray-200 rounded"
               />
@@ -1042,6 +1093,12 @@ export const AdminPage = () => {
           </div>
         </div>
       </Modal>
+
+      <SuccessModal
+        isOpen={isSuccessModalOpen}
+        onClose={() => setIsSuccessModalOpen(false)}
+        message={successMessage}
+      />
     </div>
   );
 };

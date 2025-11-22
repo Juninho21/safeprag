@@ -12,23 +12,25 @@ export const Logo: React.FC<LogoProps> = ({
   showText = false 
 }) => {
   const [logoUrl, setLogoUrl] = useState<string>('');
+  const BASE = import.meta.env.BASE_URL || '/';
   
   useEffect(() => {
-    const controller = new AbortController();
     const loadLogo = async () => {
       try {
-        const res = await fetch('/latest-backup.json', { cache: 'no-store', signal: controller.signal });
-        if (!res.ok) throw new Error(`HTTP ${res.status}`);
+        const res = await fetch(`${BASE}latest-backup.json`, { cache: 'no-store' });
+        if (!res.ok) {
+          setLogoUrl(`${BASE}safeprag_logo.png`);
+          return;
+        }
         const data = await res.json();
         const url = data?.COMPANY?.logo_url;
-        setLogoUrl(typeof url === 'string' && url.length > 0 ? url : '/safeprag_logo.png');
-      } catch (err) {
-        console.error('Erro ao buscar logo de latest-backup.json:', err);
-        setLogoUrl('/safeprag_logo.png');
+        setLogoUrl(typeof url === 'string' && url.length > 0 ? url : `${BASE}safeprag_logo.png`);
+      } catch {
+        // Falha ao buscar (arquivo inexistente, rede, etc). Mantém fallback silencioso.
+        setLogoUrl(`${BASE}safeprag_logo.png`);
       }
     };
     loadLogo();
-    return () => controller.abort();
   }, []);
 
   const sizeClasses = {
@@ -40,10 +42,10 @@ export const Logo: React.FC<LogoProps> = ({
   } as const;
 
   const handleImageError = (e: React.SyntheticEvent<HTMLImageElement, Event>) => {
-    console.error('Erro ao carregar logo:', e);
     // Em caso de erro no logo do JSON, usar o logo padrão Safeprag
-    if (logoUrl !== '/safeprag_logo.png') {
-      setLogoUrl('/safeprag_logo.png');
+    // Em caso de erro no logo do JSON, usar o logo padrão Safeprag
+    if (logoUrl !== `${BASE}safeprag_logo.png`) {
+      setLogoUrl(`${BASE}safeprag_logo.png`);
     }
   };
 
@@ -53,7 +55,7 @@ export const Logo: React.FC<LogoProps> = ({
       <div className={`text-center ${className}`}>
         <img
           className={`mx-auto ${sizeClasses[size]}`}
-          src={'/safeprag_logo.png'}
+          src={`${BASE}safeprag_logo.png`}
           alt="Safeprag Logo"
           onError={handleImageError}
         />

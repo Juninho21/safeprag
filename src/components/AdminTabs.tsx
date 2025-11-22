@@ -1,6 +1,5 @@
 import React from 'react';
-import { Link, useLocation } from 'react-router-dom';
-import { Building2, Users, Package, FileText, ClipboardList, Database, Download, Cloud, ChevronDown } from 'lucide-react';
+import { Building2, Users, Package, Database, Download, ChevronDown } from 'lucide-react';
 
 interface AdminTabsProps {
   activeTab: string;
@@ -8,7 +7,6 @@ interface AdminTabsProps {
 }
 
 export const AdminTabs: React.FC<AdminTabsProps> = ({ activeTab, onTabChange }) => {
-  const location = useLocation();
 
   const tabs = [
     { id: 'empresa', label: 'Empresa', icon: Building2 },
@@ -28,7 +26,9 @@ export const AdminTabs: React.FC<AdminTabsProps> = ({ activeTab, onTabChange }) 
           <select
             id="admin-tab-select"
             value={activeTab}
-            onChange={(e) => onTabChange(e.target.value)}
+            onChange={(e) => {
+              onTabChange(e.target.value);
+            }}
             className="block appearance-none w-full bg-gray-100 border border-gray-300 text-gray-700 py-2 px-4 pr-8 rounded-lg leading-tight focus:outline-none focus:bg-white focus:border-blue-500"
           >
             {tabs.map((tab) => (
@@ -48,16 +48,15 @@ export const AdminTabs: React.FC<AdminTabsProps> = ({ activeTab, onTabChange }) 
         {tabs.map((tab) => {
           const Icon = tab.icon;
           const isActive = activeTab === tab.id;
-          
+
           return (
             <button
               key={tab.id}
               onClick={() => onTabChange(tab.id)}
-              className={`flex items-center px-3 py-1 sm:px-4 sm:py-2 rounded-lg transition-colors text-sm sm:text-base ${
-                isActive
-                  ? 'bg-blue-500 text-white'
-                  : 'bg-gray-100 text-gray-700 hover:bg-gray-200'
-              }`}
+              className={`flex items-center px-3 py-1 sm:px-4 sm:py-2 rounded-lg transition-colors text-sm sm:text-base ${isActive
+                ? 'bg-blue-500 text-white'
+                : 'bg-gray-100 text-gray-700 hover:bg-gray-200'
+                }`}
             >
               <Icon className="w-4 h-4 mr-1.5 sm:mr-2 sm:w-5 sm:h-5" />
               {tab.label}
@@ -65,7 +64,7 @@ export const AdminTabs: React.FC<AdminTabsProps> = ({ activeTab, onTabChange }) 
           );
         })}
       </div>
-      
+
       {/* Botão Supabase para ambos os layouts (ajustado para telas pequenas) */}
       {/*
       <Link

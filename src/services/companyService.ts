@@ -1,31 +1,115 @@
-export const COMPANY_STORAGE_KEY = 'safeprag_company_data';
-
-export interface CompanyData {
-  id?: number;
-  name: string;
-  cnpj: string;
-  phone?: string;
-  address?: string;
-  email?: string;
-  logo_url?: string;
-  document?: string;
-  environmental_license?: {
-    number?: string;
-    date?: string;
-  };
-  sanitary_permit?: {
-    number?: string;
-    expiry_date?: string;
-  };
-  created_at?: string;
-  updated_at?: string;
-}
+import { doc, getDoc, updateDoc, serverTimestamp } from 'firebase/firestore';
+import { ref, uploadBytes, getDownloadURL } from 'firebase/storage';
+import { db, storage } from '../config/firebase';
+import type { Company } from '../types/company.types';
 
 /**
- * Função para buscar dados da empresa do localStorage
- * @returns Dados da empresa ou null se não existirem
+ * Serviço para gerenciar dados da empresa no Firestore
  */
-export const getCompany = (): CompanyData | null => {
+
+/**
+ * Busca dados de uma empresa específica
+ */
+export const getCompany = async (companyId: string): Promise<Company | null> => {
+  try {
+    const docRef = doc(db, 'companies', companyId);
+    const docSnap = await getDoc(docRef);
+
+    if (docSnap.exists()) {
+      return { id: docSnap.id, ...docSnap.data() } as Company;
+    }
+
+    return null;
+  } catch (error) {
+    console.error('Erro ao buscar empresa:', error);
+    throw error;
+  }
+};
+
+/**
+ * Atualiza dados da empresa
+ */
+export const saveCompany = async (
+  companyId: string,
+  data: Partial<Omit<Company, 'id' | 'created_at'>>,
+  logoFile?: File | null
+): Promise<void> => {
+  try {
+    let updateData: any = { ...data };
+
+    // Upload de logo se fornecido
+    if (logoFile) {
+      const logoUrl = await uploadCompanyLogo(companyId, logoFile);
+      updateData.logo_url = logoUrl;
+    }
+
+    updateData.updated_at = serverTimestamp();
+
+    const docRef = doc(db, 'companies', companyId);
+    await updateDoc(docRef, updateData);
+  } catch (error) {
+    console.error('Erro ao atualizar empresa:', error);
+    throw error;
+  }
+};
+
+/**
+ * Faz upload do logo da empresa para o Firebase Storage
+ * Com otimização automática: compressão e conversão para WebP
+ */
+export const uploadCompanyLogo = async (companyId: string, file: File): Promise<string> => {
+  try {
+    // Importar dinamicamente o módulo de utilitários de imagem
+    const { optimizeImage } = await import('../utils/imageUtils');
+
+    // Otimizar imagem (validar, comprimir e converter para WebP)
+    const optimizedFile = await optimizeImage(file);
+
+    // Nome do arquivo sempre em WebP
+    const fileName = `company-logos/${companyId}.webp`;
+    const storageRef = ref(storage, fileName);
+
+    // Upload do arquivo otimizado
+    await uploadBytes(storageRef, optimizedFile, {
+      contentType: 'image/webp',
+      cacheControl: 'public, max-age=31536000', // Cache de 1 ano
+    });
+
+    // Obter URL pública
+    const downloadURL = await getDownloadURL(storageRef);
+
+    console.log(`✅ Logo enviado com sucesso: ${fileName}`);
+    return downloadURL;
+  } catch (error) {
+    console.error('Erro ao fazer upload do logo:', error);
+    throw error;
+  }
+};
+
+/**
+ * Função auxiliar para converter arquivo para base64 (para compatibilidade com código legado)
+ */
+export const convertFileToBase64 = (file: File): Promise<string> => {
+  return new Promise((resolve, reject) => {
+    const reader = new FileReader();
+    reader.readAsDataURL(file);
+    reader.onload = () => resolve(reader.result as string);
+    reader.onerror = error => reject(error);
+  });
+};
+
+// Backward compatibility: exportar interface legada
+export interface CompanyData extends Company { }
+export const COMPANY_STORAGE_KEY = 'safeprag_company_data'; // Mantido para compatibilidade
+
+// ===== BACKWARD COMPATIBILITY FUNCTIONS FOR BACKUP/RESTORE =====
+// Estas funções usam localStorage e são mantidas para compatibilidade com o sistema de backup existente
+
+/**
+ * Busca dados da empresa do localStorage (para backup/restore)
+ * @deprecated Use getCompany(companyId) para operações normais
+ */
+export const getCompanyFromLocalStorage = (): CompanyData | null => {
   try {
     const data = localStorage.getItem(COMPANY_STORAGE_KEY);
     if (!data) {
@@ -39,25 +123,23 @@ export const getCompany = (): CompanyData | null => {
 };
 
 /**
- * Função para salvar dados da empresa no localStorage
- * @param data Dados da empresa a serem salvos
- * @param logoFile Arquivo de logo (opcional)
- * @returns Dados da empresa atualizados
+ * Salva dados da empresa no localStorage (para backup/restore)
+ * @deprecated Use saveCompany(companyId, data, logoFile) para operações normais
  */
-export const saveCompany = async (data: CompanyData, logoFile?: File | null): Promise<CompanyData> => {
+export const saveCompanyToLocalStorage = async (data: CompanyData, logoFile?: File | null): Promise<CompanyData> => {
   try {
     let updatedData = { ...data };
 
     if (logoFile) {
-      // Converte o logo para base64 e armazena no localStorage
+      // Para localStorage, converte para base64
       const logoBase64 = await convertFileToBase64(logoFile);
       updatedData.logo_url = logoBase64;
     }
 
     updatedData.updated_at = new Date().toISOString();
-    
+
     localStorage.setItem(COMPANY_STORAGE_KEY, JSON.stringify(updatedData));
-    
+
     return updatedData;
   } catch (error) {
     console.error('Erro ao salvar dados da empresa no localStorage:', error);
@@ -66,9 +148,10 @@ export const saveCompany = async (data: CompanyData, logoFile?: File | null): Pr
 };
 
 /**
- * Função para deletar dados da empresa do localStorage
+ * Deleta dados da empresa do localStorage (para backup/restore)
+ * @deprecated Não use para operações normais
  */
-export const deleteCompany = async (): Promise<void> => {
+export const deleteCompanyFromLocalStorage = async (): Promise<void> => {
   try {
     localStorage.removeItem(COMPANY_STORAGE_KEY);
   } catch (error) {
@@ -78,38 +161,25 @@ export const deleteCompany = async (): Promise<void> => {
 };
 
 /**
- * Função para converter um arquivo para base64
- * @param file Arquivo a ser convertido
- * @returns String base64 do arquivo
+ * Faz upload do logo da empresa para localStorage (base64)
+ * @deprecated Use uploadCompanyLogo(companyId, file) para operações normais
  */
-export const convertFileToBase64 = (file: File): Promise<string> => {
-  return new Promise((resolve, reject) => {
-    const reader = new FileReader();
-    reader.readAsDataURL(file);
-    reader.onload = () => resolve(reader.result as string);
-    reader.onerror = error => reject(error);
-  });
-};
-
-/**
- * Função para fazer upload do logo da empresa
- * @param file Arquivo de logo
- * @returns URL do logo (base64)
- */
-export const uploadCompanyLogo = async (file: File): Promise<string> => {
+export const uploadCompanyLogoToLocalStorage = async (file: File): Promise<string> => {
   try {
     const base64Logo = await convertFileToBase64(file);
-    
+
     // Atualiza os dados da empresa com o novo logo
-    const companyData = getCompany();
+    const companyData = getCompanyFromLocalStorage();
     if (companyData) {
       companyData.logo_url = base64Logo;
-      await saveCompany(companyData);
+      await saveCompanyToLocalStorage(companyData);
     }
-    
+
     return base64Logo;
   } catch (error) {
     console.error('Erro ao fazer upload do logo da empresa:', error);
     throw error;
   }
 };
+
+// Função de delete removida - não permitimos deletar empresas através do serviço do frontend

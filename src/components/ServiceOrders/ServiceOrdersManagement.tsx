@@ -7,6 +7,7 @@ import { getAllServiceOrders } from '../../services/ordemServicoService';
 import { downloadPDFFromStorage, generateServiceOrderPDF } from '../../services/pdfService';
 // import { toast } from 'react-toastify';
 import { FileText, Download } from 'lucide-react';
+import { useAuth } from '../../contexts/AuthContext';
 
 interface ServiceOrderDisplay {
   id: string;
@@ -22,9 +23,9 @@ interface ServiceOrderDisplay {
 }
 
 const ServiceOrdersManagement = () => {
+  const { companyId } = useAuth();
   console.log('ServiceOrdersManagement renderizado'); // Log para debug
-  console.log('ServiceOrdersManagement renderizado'); // Log para debug
-  
+
   const [filters, setFilters] = useState({
     orderNumber: '',
     jde: '',
@@ -47,11 +48,11 @@ const ServiceOrdersManagement = () => {
     try {
       // Carregar ordens de serviço do localStorage
       const orders = getAllServiceOrders();
-      
+
       // Verificar PDFs armazenados
       const storedPDFsData = JSON.parse(localStorage.getItem('safeprag_service_order_pdfs') || '{}');
       setStoredPDFs(storedPDFsData);
-      
+
       // Mapear ordens para o formato de exibição
       const displayOrders = orders.map(order => ({
         id: order.id,
@@ -65,7 +66,7 @@ const ServiceOrdersManagement = () => {
         status: order.status,
         hasPDF: !!storedPDFsData[order.id]
       }));
-      
+
       setData(displayOrders);
     } catch (error) {
       console.error('Erro ao carregar ordens de serviço:', error);
@@ -79,45 +80,45 @@ const ServiceOrdersManagement = () => {
   const handleSearch = () => {
     // Carregar todas as ordens
     const orders = getAllServiceOrders();
-    
+
     // Filtrar com base nos critérios
     const filtered = orders.filter(order => {
       // Filtrar por número da OS
       if (filters.orderNumber && !order.id.toLowerCase().includes(filters.orderNumber.toLowerCase())) {
         return false;
       }
-      
+
       // Filtrar por código do cliente
       if (filters.jde && !order.clientId.toLowerCase().includes(filters.jde.toLowerCase())) {
         return false;
       }
-      
+
       // Filtrar por nome fantasia
       if (filters.fantasyName && !order.clientName.toLowerCase().includes(filters.fantasyName.toLowerCase())) {
         return false;
       }
-      
+
       // Filtrar por data inicial
       if (filters.startDate && new Date(order.date) < new Date(filters.startDate)) {
         return false;
       }
-      
+
       // Filtrar por data final
       if (filters.endDate && new Date(order.date) > new Date(filters.endDate)) {
         return false;
       }
-      
+
       // Filtrar por técnico (implementar quando houver campo de técnico)
       // if (filters.technician && !order.technician.toLowerCase().includes(filters.technician.toLowerCase())) {
       //   return false;
       // }
-      
+
       return true;
     });
-    
+
     // Verificar PDFs armazenados
     const storedPDFsData = JSON.parse(localStorage.getItem('safeprag_service_order_pdfs') || '{}');
-    
+
     // Mapear para o formato de exibição
     const displayOrders = filtered.map(order => ({
       id: order.id,
@@ -131,7 +132,7 @@ const ServiceOrdersManagement = () => {
       status: order.status,
       hasPDF: !!storedPDFsData[order.id]
     }));
-    
+
     setData(displayOrders);
   };
 
@@ -161,7 +162,7 @@ const ServiceOrdersManagement = () => {
           item.status
         ].join(','))
       ].join('\n');
-      
+
       // Criar blob e download
       const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
       const url = URL.createObjectURL(blob);
@@ -171,7 +172,7 @@ const ServiceOrdersManagement = () => {
       document.body.appendChild(link);
       link.click();
       document.body.removeChild(link);
-      
+
       // toast.success('Dados exportados com sucesso!');
       console.log('Dados exportados com sucesso!');
     } catch (error) {
@@ -191,13 +192,13 @@ const ServiceOrdersManagement = () => {
         // Se não existir, gerar novo PDF
         const orders = getAllServiceOrders();
         const order = orders.find(o => o.id === id);
-        
+
         if (!order) {
           // toast.error('Ordem de serviço não encontrada');
-      console.error('Ordem de serviço não encontrada');
+          console.error('Ordem de serviço não encontrada');
           return;
         }
-        
+
         // Preparar dados para o PDF
         const pdfData = {
           orderNumber: id,
@@ -227,18 +228,18 @@ const ServiceOrdersManagement = () => {
             technician: order.signatures?.technician || ''
           }
         };
-        
+
         // Gerar PDF
-        generateServiceOrderPDF(pdfData)
+        generateServiceOrderPDF(pdfData, companyId || 'default')
           .then(() => {
             // toast.success('PDF gerado com sucesso!');
-        console.log('PDF gerado com sucesso!');
+            console.log('PDF gerado com sucesso!');
             loadServiceOrders(); // Recarregar para atualizar status de PDF
           })
           .catch(error => {
             console.error('Erro ao gerar PDF:', error);
             // toast.error('Erro ao gerar PDF');
-        console.error('Erro ao gerar PDF');
+            console.error('Erro ao gerar PDF');
           });
       }
     } catch (error) {
@@ -294,21 +295,21 @@ const ServiceOrdersManagement = () => {
       </div>
 
       <div className="flex flex-col sm:flex-row justify-end space-y-2 sm:space-y-0 sm:space-x-4">
-        <Button 
+        <Button
           onClick={handleSearch}
           className="w-full sm:w-auto"
         >
           PROCURAR
         </Button>
-        <Button 
-          variant="outline" 
+        <Button
+          variant="outline"
           onClick={handleClear}
           className="w-full sm:w-auto"
         >
           LIMPAR
         </Button>
-        <Button 
-          variant="outline" 
+        <Button
+          variant="outline"
           onClick={handleExport}
           className="w-full sm:w-auto"
         >
@@ -336,7 +337,7 @@ const ServiceOrdersManagement = () => {
                     <div className="text-sm text-gray-500">Código do Cliente: {item.clientId}</div>
                   </div>
                   <div className="flex gap-2">
-                    <Button 
+                    <Button
                       variant="warning"
                       onClick={() => handleViewServiceOrder(item.id)}
                       size="sm"
@@ -346,7 +347,7 @@ const ServiceOrdersManagement = () => {
                       {item.hasPDF ? 'Ver PDF' : 'Gerar PDF'}
                     </Button>
                     {item.status === 'completed' && (
-                      <Button 
+                      <Button
                         variant="success"
                         onClick={() => handleViewCertificate(item.id)}
                         size="sm"
@@ -356,7 +357,7 @@ const ServiceOrdersManagement = () => {
                     )}
                   </div>
                 </div>
-                
+
                 <div className="space-y-1">
                   <div>
                     <span className="text-gray-500">Nome Fantasia:</span>
@@ -406,7 +407,7 @@ const ServiceOrdersManagement = () => {
                   <TableCell className="whitespace-nowrap">{item.date}</TableCell>
                   <TableCell className="whitespace-nowrap capitalize">{item.status.replace('_', ' ')}</TableCell>
                   <TableCell className="whitespace-nowrap space-x-2">
-                    <Button 
+                    <Button
                       variant="warning"
                       onClick={() => handleViewServiceOrder(item.id)}
                       size="sm"
@@ -416,7 +417,7 @@ const ServiceOrdersManagement = () => {
                       {item.hasPDF ? 'Download' : 'Gerar PDF'}
                     </Button>
                     {item.status === 'completed' && (
-                      <Button 
+                      <Button
                         variant="success"
                         onClick={() => handleViewCertificate(item.id)}
                         size="sm"

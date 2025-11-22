@@ -1,8 +1,12 @@
+import type { Role } from './role';
+
 export interface User {
   id: string;
   name: string;
   phone?: string;
   email?: string;
+  role?: Role;
+  company_id?: string;
   signature_type: string;
   tecnico_name?: string;
   tecnico_crea?: string;
@@ -12,4 +16,4 @@ export interface User {
   tecnico_signature?: string;
   created_at?: string;
   updated_at?: string;
-} 
+}
