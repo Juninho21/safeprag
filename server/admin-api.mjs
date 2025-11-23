@@ -202,16 +202,19 @@ app.get('/admin/users', requireAdmin, async (req, res) => {
       companyId = req.query.companyId;
     }
 
-    // Se não tem companyId, retorna vazio (precisa migrar)
+    // Se não tem companyId, retorna vazio
     if (!companyId) {
       return res.json({ users: [] });
     }
 
-    // Buscar usuários do Firestore
-    const usersSnapshot = await db.collection('companies').doc(companyId).collection('users').get();
+    // Buscar usuários do Firestore (Coleção top-level 'users')
+    const usersSnapshot = await db.collection('users')
+      .where('companyId', '==', companyId)
+      .get();
+
     const firestoreUsers = {};
     usersSnapshot.forEach(doc => {
-      firestoreUsers[doc.data().uid] = { id: doc.id, ...doc.data() };
+      firestoreUsers[doc.id] = { id: doc.id, ...doc.data() };
     });
 
     // Buscar usuários do Firebase Auth e combinar
@@ -275,14 +278,21 @@ app.post('/admin/users', requireAdmin, express.json(), async (req, res) => {
     // Revogar tokens para forçar refresh
     await admin.auth().revokeRefreshTokens(userRecord.uid);
 
-    // Salvar no Firestore
-    await db.collection('companies').doc(adminCompanyId).collection('users').doc(userRecord.uid).set({
+    // Salvar no Firestore (Coleção top-level 'users')
+    await db.collection('users').doc(userRecord.uid).set({
       uid: userRecord.uid,
       email: userRecord.email,
       name: displayName || '',
       role: roleValue,
+      companyId: adminCompanyId,
+      active: true,
       created_at: admin.firestore.FieldValue.serverTimestamp(),
       updated_at: admin.firestore.FieldValue.serverTimestamp()
+    });
+
+    // Adicionar ID do usuário ao array 'users' na coleção 'companies'
+    await db.collection('companies').doc(adminCompanyId).update({
+      users: admin.firestore.FieldValue.arrayUnion(userRecord.uid)
     });
 
     res.status(201).json({
@@ -324,13 +334,11 @@ app.post('/admin/users/:uid/role', requireAdmin, express.json(), async (req, res
     });
     await admin.auth().revokeRefreshTokens(uid);
 
-    // Atualizar Firestore
-    if (userCompanyId) {
-      await db.collection('companies').doc(userCompanyId).collection('users').doc(uid).update({
-        role,
-        updated_at: admin.firestore.FieldValue.serverTimestamp()
-      });
-    }
+    // Atualizar Firestore (Coleção top-level 'users')
+    await db.collection('users').doc(uid).update({
+      role,
+      updated_at: admin.firestore.FieldValue.serverTimestamp()
+    });
 
     res.json({ uid, role, companyId: userCompanyId });
   } catch (e) {
@@ -361,9 +369,14 @@ app.delete('/admin/users/:uid', requireAdmin, async (req, res) => {
     // Deletar do Firebase Auth
     await admin.auth().deleteUser(uid);
 
-    // Deletar do Firestore
+    // Deletar do Firestore (Coleção top-level 'users')
+    await db.collection('users').doc(uid).delete();
+
+    // Remover ID do usuário do array 'users' na coleção 'companies'
     if (userCompanyId) {
-      await db.collection('companies').doc(userCompanyId).collection('users').doc(uid).delete();
+      await db.collection('companies').doc(userCompanyId).update({
+        users: admin.firestore.FieldValue.arrayRemove(uid)
+      });
     }
 
     res.json({ uid, deleted: true });

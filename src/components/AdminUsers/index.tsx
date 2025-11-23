@@ -1,5 +1,5 @@
 import React, { useEffect, useState, useMemo } from 'react';
-import { listUsers, createUser, updateUserRole, deleteUser, AdminUser } from '../../services/adminApi';
+import { listUsers, createUser, updateUserRole, deleteUser, AdminUser, listCompanies } from '../../services/adminApi';
 import { auth } from '../../config/firebase';
 import { Modal } from '../Modal';
 import {
@@ -13,7 +13,8 @@ import {
   Trash2,
   Edit2,
   CheckCircle2,
-  AlertCircle
+  AlertCircle,
+  Building2
 } from 'lucide-react';
 import { Button } from '../ui/button';
 import { RequireRole } from '../Auth/RequireRole';
@@ -24,13 +25,32 @@ import type { Company } from '../../types/company.types';
 const ROLES: AdminUser['role'][] = ['admin', 'controlador', 'cliente'];
 
 export default function AdminUsers({ companyId: propCompanyId }: { companyId?: string }) {
-  const { companyId: authCompanyId } = useAuth();
-  const companyId = propCompanyId || authCompanyId;
+  const { user, companyId: authCompanyId } = useAuth();
+  // Hardcoded owner check to match backend
+  const isOwner = user?.email === 'juninhomarinho22@gmail.com';
+
+  // If owner, we don't enforce authCompanyId, allowing them to see all companies
+  const companyId = propCompanyId || (isOwner ? undefined : authCompanyId);
+
+  console.log('AdminUsers Render:', { propCompanyId, authCompanyId, companyId });
+
   const [loading, setLoading] = useState(false);
   const [users, setUsers] = useState<AdminUser[]>([]);
   const [company, setCompany] = useState<Company | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [success, setSuccess] = useState<string | null>(null);
+
+  // Superuser States
+  const [companies, setCompanies] = useState<Company[]>([]);
+  const [selectedCompanyId, setSelectedCompanyId] = useState<string>(companyId || '');
+  const [listFilterCompanyId, setListFilterCompanyId] = useState<string>(companyId || '');
+
+  useEffect(() => {
+    if (companyId) {
+      setSelectedCompanyId(companyId);
+      setListFilterCompanyId(companyId);
+    }
+  }, [companyId]);
 
   // Filter State
   const [searchTerm, setSearchTerm] = useState('');
@@ -57,7 +77,9 @@ export default function AdminUsers({ companyId: propCompanyId }: { companyId?: s
     setLoading(true);
     setError(null);
     try {
-      const data = await listUsers(100, companyId || undefined);
+      // Usa o filtro selecionado OU o companyId da prop/auth
+      const targetId = listFilterCompanyId || companyId;
+      const data = await listUsers(100, targetId || undefined);
       setUsers(data);
     } catch (e: unknown) {
       if (e instanceof Error) {
@@ -68,7 +90,7 @@ export default function AdminUsers({ companyId: propCompanyId }: { companyId?: s
     } finally {
       setLoading(false);
     }
-  }, [companyId]);
+  }, [companyId, listFilterCompanyId]);
 
   useEffect(() => {
     async function loadCompany() {
@@ -82,9 +104,23 @@ export default function AdminUsers({ companyId: propCompanyId }: { companyId?: s
         }
       }
     }
+    async function loadCompanies() {
+      if (!authCompanyId) {
+        try {
+          const data = await listCompanies();
+          console.log('Empresas carregadas:', data);
+          setCompanies(data);
+        } catch (e) {
+          // eslint-disable-next-line no-undef
+          console.error('Erro ao carregar empresas:', e);
+        }
+      }
+    }
+
     loadCompany();
+    loadCompanies();
     refresh();
-  }, [companyId, refresh]);
+  }, [companyId, refresh, authCompanyId]);
 
   // Handlers
   function getErrorMessage(error: unknown): string {
@@ -100,7 +136,11 @@ export default function AdminUsers({ companyId: propCompanyId }: { companyId?: s
       if (!formData.email || !formData.password) {
         throw new Error('Informe email e senha temporária');
       }
-      await createUser({ ...formData, companyId: companyId || undefined });
+      const targetCompanyId = companyId || selectedCompanyId;
+      if (!targetCompanyId) {
+        throw new Error('Selecione uma empresa para o usuário');
+      }
+      await createUser({ ...formData, companyId: targetCompanyId });
       setSuccess('Usuário criado com sucesso!');
       setIsCreateModalOpen(false);
       setFormData({ email: '', password: '', displayName: '', role: 'cliente' });
@@ -228,18 +268,36 @@ export default function AdminUsers({ companyId: propCompanyId }: { companyId?: s
             />
           </div>
 
-          <div className="flex items-center gap-2 w-full sm:w-auto">
-            <Filter className="w-4 h-4 text-gray-500" />
-            <select
-              value={roleFilter}
-              onChange={(e) => setRoleFilter(e.target.value as AdminUser['role'] | 'all')}
-              className="block w-full sm:w-48 pl-3 pr-10 py-2 text-base border-gray-300 focus:outline-none focus:ring-blue-500 focus:border-blue-500 sm:text-sm rounded-lg"
-            >
-              <option value="all">Todas as Funções</option>
-              {ROLES.map(r => (
-                <option key={r} value={r}>{r.charAt(0).toUpperCase() + r.slice(1)}</option>
-              ))}
-            </select>
+          <div className="flex items-center gap-2 w-full sm:w-auto flex-wrap justify-end">
+            {(isOwner || !authCompanyId) && (
+              <div className="flex items-center gap-2">
+                <Building2 className="w-4 h-4 text-gray-500" />
+                <select
+                  value={listFilterCompanyId}
+                  onChange={(e) => setListFilterCompanyId(e.target.value)}
+                  className="block w-full sm:w-48 pl-3 pr-10 py-2 text-base border-gray-300 focus:outline-none focus:ring-blue-500 focus:border-blue-500 sm:text-sm rounded-lg"
+                >
+                  <option value="">Todas as Empresas</option>
+                  {companies.map(c => (
+                    <option key={c.id} value={c.id}>{c.name}</option>
+                  ))}
+                </select>
+              </div>
+            )}
+
+            <div className="flex items-center gap-2">
+              <Filter className="w-4 h-4 text-gray-500" />
+              <select
+                value={roleFilter}
+                onChange={(e) => setRoleFilter(e.target.value as AdminUser['role'] | 'all')}
+                className="block w-full sm:w-48 pl-3 pr-10 py-2 text-base border-gray-300 focus:outline-none focus:ring-blue-500 focus:border-blue-500 sm:text-sm rounded-lg"
+              >
+                <option value="all">Todas as Funções</option>
+                {ROLES.map(r => (
+                  r ? <option key={r} value={r}>{r.charAt(0).toUpperCase() + r.slice(1)}</option> : null
+                ))}
+              </select>
+            </div>
           </div>
         </div>
 
@@ -341,6 +399,24 @@ export default function AdminUsers({ companyId: propCompanyId }: { companyId?: s
               <input type="text" style={{ display: 'none' }} />
               <input type="password" style={{ display: 'none' }} />
 
+              {/* Company Selection for Superusers */}
+              {(isOwner || !authCompanyId) && (
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-1">Empresa</label>
+                  <select
+                    required
+                    className="w-full rounded-lg border-gray-300 focus:ring-blue-500 focus:border-blue-500"
+                    value={selectedCompanyId || companyId || ''}
+                    onChange={e => setSelectedCompanyId(e.target.value)}
+                  >
+                    <option value="">Selecione uma empresa...</option>
+                    {companies.map(c => (
+                      <option key={c.id} value={c.id}>{c.name} ({c.cnpj})</option>
+                    ))}
+                  </select>
+                </div>
+              )}
+
               <div>
                 <label className="block text-sm font-medium text-gray-700 mb-1">Email</label>
                 <input
@@ -391,7 +467,7 @@ export default function AdminUsers({ companyId: propCompanyId }: { companyId?: s
                   onChange={e => setFormData({ ...formData, role: e.target.value as AdminUser['role'] })}
                 >
                   {ROLES.map(r => (
-                    <option key={r} value={r}>{r.charAt(0).toUpperCase() + r.slice(1)}</option>
+                    r ? <option key={r} value={r}>{r.charAt(0).toUpperCase() + r.slice(1)}</option> : null
                   ))}
 
                 </select>
@@ -434,7 +510,7 @@ export default function AdminUsers({ companyId: propCompanyId }: { companyId?: s
                   onChange={e => setFormData({ ...formData, role: e.target.value as AdminUser['role'] })}
                 >
                   {ROLES.map(r => (
-                    <option key={r} value={r}>{r.charAt(0).toUpperCase() + r.slice(1)}</option>
+                    r ? <option key={r} value={r}>{r.charAt(0).toUpperCase() + r.slice(1)}</option> : null
                   ))}
                 </select>
               </div>

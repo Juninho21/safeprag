@@ -6,18 +6,19 @@ import BackupMaintenance from './BackupMaintenance/BackupMaintenance';
 import { ClientForm } from './ClientForm';
 import { ProductForm } from './ProductForm';
 import { ImageUpload } from './ImageUpload';
-import { Trash2, Pen, Eye, X } from 'lucide-react';
-import { STORAGE_KEYS, backupAllData, restoreBackup } from '../services/storageKeys';
+import { Trash2, Eye, X, Building2, FileText, ShieldCheck, ChevronDown, Users, Pen } from 'lucide-react';
+import { STORAGE_KEYS } from '../services/storageKeys';
 import { Modal } from './Modal';
 import { SuccessModal } from './SuccessModal';
 import DownloadsManagement from './ServiceOrders/DownloadsManagement';
+import AdminUsers from './AdminUsers';
 import { useLocation, useNavigate } from 'react-router-dom';
 import {
-  getCompanyFromLocalStorage as getCompanyBackup,
-  saveCompanyToLocalStorage as saveCompanyBackup,
-  deleteCompanyFromLocalStorage as deleteCompanyBackup,
-  uploadCompanyLogoToLocalStorage as uploadLogoBackup
+  getCompany,
+  saveCompany,
+  uploadCompanyLogo
 } from '../services/companyService';
+import { useAuth } from '../contexts/AuthContext';
 
 
 interface CompanyData {
@@ -75,6 +76,7 @@ export const AdminPage = () => {
   const [activeTab, setActiveTab] = useState('empresa');
   const location = useLocation();
   const navigate = useNavigate();
+  const { companyId: authCompanyId } = useAuth();
 
   const [showSavedData, setShowSavedData] = useState(false);
   const [companyData, setCompanyData] = useState<CompanyData>(() => {
@@ -141,35 +143,35 @@ export const AdminPage = () => {
   useEffect(() => {
     const loadCompanyData = async () => {
       try {
-        // Carregar dados APENAS do localStorage (arquivo JSON de backup)
-        const localData = getCompanyBackup();
-        if (localData) {
-          setCompanyData({
-            ...emptyCompanyData,
-            ...localData,
-            environmental_license: {
-              ...emptyCompanyData.environmental_license,
-              ...(localData.environmental_license || {})
-            },
-            sanitary_permit: {
-              ...emptyCompanyData.sanitary_permit,
-              ...(localData.sanitary_permit || {})
-            }
-          });
-          console.log('Dados da empresa carregados do arquivo JSON de backup:', localData);
-          setShowSavedData(true);
-        } else {
-          // Se não há dados, mantém campos vazios (sem dados padrão)
-          console.log('Nenhum dado da empresa encontrado no arquivo JSON de backup');
-          setCompanyData(emptyCompanyData);
+        // Se o usuário já tem uma empresa vinculada, carrega ela
+        // Se não (admin/dono), tenta carregar a empresa que está sendo editada (se houver ID no estado)
+        const targetId = authCompanyId || companyData.id;
+
+        if (targetId) {
+          const remoteData = await getCompany(targetId);
+          if (remoteData) {
+            setCompanyData({
+              ...emptyCompanyData,
+              ...remoteData,
+              environmental_license: {
+                ...emptyCompanyData.environmental_license,
+                ...(remoteData.environmental_license || {})
+              },
+              sanitary_permit: {
+                ...emptyCompanyData.sanitary_permit,
+                ...(remoteData.sanitary_permit || {})
+              }
+            });
+            console.log('Dados da empresa carregados do Firestore:', remoteData);
+            setShowSavedData(true);
+          }
         }
       } catch (error) {
         console.error('Erro ao carregar dados da empresa:', error);
-        setCompanyData(emptyCompanyData);
       }
     };
     loadCompanyData();
-  }, []);
+  }, [authCompanyId]); // Removido companyData.id para evitar loop, carrega apenas na montagem ou mudança de authCompanyId
 
   useEffect(() => {
     const pathname = location.pathname;
@@ -181,7 +183,9 @@ export const AdminPage = () => {
       setActiveTab('downloads');
     } else if (pathname.endsWith('/configuracoes/clientes')) {
       setActiveTab('clientes');
-    } else if (pathname.endsWith('/configuracoes/assinaturas')) {
+    } else if (pathname.endsWith('/configuracoes/usuarios')) {
+      setActiveTab('usuarios');
+    } else if (pathname.endsWith('/configuracoes/usuarios')) {
       setActiveTab('usuarios');
     } else if (pathname.endsWith('/configuracoes/backup')) {
       setActiveTab('backup');
@@ -194,7 +198,9 @@ export const AdminPage = () => {
     else if (activeTab === 'produtos') path = '/configuracoes/produtos';
     else if (activeTab === 'downloads') path = '/configuracoes/downloads';
     else if (activeTab === 'clientes') path = '/configuracoes/clientes';
-    else if (activeTab === 'usuarios') path = '/configuracoes/assinaturas';
+    else if (activeTab === 'usuarios') path = '/configuracoes/usuarios';
+    else if (activeTab === 'clientes') path = '/configuracoes/clientes';
+    else if (activeTab === 'usuarios') path = '/configuracoes/usuarios';
     else if (activeTab === 'backup') path = '/configuracoes/backup';
 
     if (location.pathname !== path) {
@@ -224,7 +230,7 @@ export const AdminPage = () => {
   }, [activeTab]);
 
   useEffect(() => {
-    if (activeTab === 'usuarios') {
+    if (activeTab === 'empresa') {
       // Carregar dados do localStorage para preencher o formulário de assinaturas
       const savedData = localStorage.getItem(STORAGE_KEYS.USER_DATA) || localStorage.getItem('userData');
       if (savedData) {
@@ -252,8 +258,16 @@ export const AdminPage = () => {
 
   const handleSave = async () => {
     try {
-      // Salvar no localStorage
-      await saveCompanyBackup(companyData);
+      // Se não tiver ID, gera um novo
+      const idToSave = companyData.id || authCompanyId || crypto.randomUUID();
+
+      // Salvar no Firestore
+      await saveCompany(idToSave, {
+        ...companyData
+      });
+
+      // Atualiza o estado com o ID (caso seja novo)
+      setCompanyData(prev => ({ ...prev, id: idToSave }));
 
       console.log('Dados da empresa salvos com sucesso!');
       setShowSavedData(true);
@@ -266,30 +280,30 @@ export const AdminPage = () => {
   };
 
   const handleDelete = () => {
-    if (window.confirm('Tem certeza que deseja excluir os dados da empresa?')) {
-      try {
-        // Deletar do localStorage
-        deleteCompanyBackup();
-
-        // Resetar o estado
-        setCompanyData(emptyCompanyData);
-        setShowSavedData(false);
-        // toast.success('Dados da empresa excluídos com sucesso!');
-        console.log('Dados da empresa excluídos com sucesso!');
-      } catch (error) {
-        console.error('Erro ao excluir dados da empresa:', error);
-      }
+    if (window.confirm('A exclusão de empresas deve ser feita pelo painel administrativo.')) {
+      // Não implementado via frontend por segurança
     }
   };
 
   const handleLogoUpload = async (file: File) => {
     try {
-      // URL base64 para localStorage
-      const logoUrl = await uploadLogoBackup(file);
+      const targetId = companyData.id || authCompanyId;
+      if (!targetId) {
+        alert('Salve os dados da empresa antes de enviar o logo.');
+        return;
+      }
+
+      // Upload para Firestore Storage
+      const logoUrl = await uploadCompanyLogo(targetId, file);
+
       setCompanyData(prev => ({
         ...prev,
         logo_url: logoUrl
       }));
+
+      // Atualiza o registro da empresa com a nova URL
+      await saveCompany(targetId, { logo_url: logoUrl });
+
       console.log('Logo da empresa atualizado com sucesso!');
       showSuccess('Logo da empresa atualizado com sucesso!');
     } catch (error) {
@@ -327,67 +341,9 @@ export const AdminPage = () => {
     }
   };
 
-  const handleBackup = () => {
-    try {
-      const backup = backupAllData();
-      const backupStr = JSON.stringify(backup);
-      const blob = new Blob([backupStr], { type: 'application/json' });
-      const url = URL.createObjectURL(blob);
-      const a = document.createElement('a');
-      a.href = url;
-      a.download = `sulpest_backup_${new Date().toISOString().split('T')[0]}.json`;
-      document.body.appendChild(a);
-      a.click();
-      document.body.removeChild(a);
-      URL.revokeObjectURL(url);
-      // toast.success('Backup realizado com sucesso!');
-      console.log('Backup realizado com sucesso!');
-    } catch (error) {
-      console.error('Erro ao fazer backup:', error);
-      // toast.error('Erro ao gerar backup');
-      console.error('Erro ao gerar backup');
-    }
-  };
 
-  const handleRestore = (event: React.ChangeEvent<HTMLInputElement>) => {
-    const file = event.target.files?.[0];
-    if (!file) return;
 
-    const reader = new FileReader();
-    reader.onload = (e) => {
-      try {
-        const backup = JSON.parse(e.target?.result as string);
-        restoreBackup(backup);
 
-        // Recarregar dados da empresa após o restore
-        const localData = getCompanyBackup();
-        if (localData) {
-          setCompanyData({
-            ...emptyCompanyData,
-            ...localData,
-            environmental_license: {
-              ...emptyCompanyData.environmental_license,
-              ...(localData.environmental_license || {})
-            },
-            sanitary_permit: {
-              ...emptyCompanyData.sanitary_permit,
-              ...(localData.sanitary_permit || {})
-            }
-          });
-          setShowSavedData(true);
-          console.log('Dados da empresa carregados do backup:', localData);
-        }
-
-        // toast.success('Backup restaurado com sucesso!');
-        console.log('Backup restaurado com sucesso!');
-      } catch (error) {
-        console.error('Erro ao restaurar backup:', error);
-        // toast.error('Erro ao restaurar backup');
-        console.error('Erro ao restaurar backup');
-      }
-    };
-    reader.readAsText(file);
-  };
 
   const handleSaveControlador = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -624,172 +580,452 @@ export const AdminPage = () => {
 
           <div className="mt-4 sm:mt-6">
             {activeTab === 'empresa' && (
-              <div className="bg-white shadow rounded-lg p-3 sm:p-6">
-                <form onSubmit={handleSubmit} className="space-y-4">
-                  <div className="mb-6">
-                    <ImageUpload
-                      onFileSelect={handleLogoUpload}
-                      currentImageUrl={companyData.logo_url || ""}
-                    />
+              <div className="space-y-6">
+                {/* Dados da Empresa */}
+                <div className="bg-white shadow-md rounded-lg overflow-hidden">
+                  <div className="bg-gray-50 px-4 py-3 border-b border-gray-200 flex items-center gap-2">
+                    <Building2 className="h-5 w-5 text-blue-600" />
+                    <h3 className="text-lg font-medium text-gray-900">Dados da Empresa</h3>
                   </div>
-
-                  <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                    <div>
-                      <label htmlFor="name" className="block text-sm font-medium text-gray-700 mb-1">
-                        Nome da Empresa
-                      </label>
-                      <input
-                        type="text"
-                        id="name"
-                        name="name"
-                        value={companyData.name}
-                        onChange={handleInputChange}
-                        className="w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-1 focus:ring-blue-500"
-                      />
-                    </div>
-
-                    <div>
-                      <label htmlFor="cnpj" className="block text-sm font-medium text-gray-700 mb-1">
-                        CNPJ
-                      </label>
-                      <input
-                        type="text"
-                        id="cnpj"
-                        name="cnpj"
-                        value={companyData.cnpj}
-                        onChange={handleInputChange}
-                        className="w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-1 focus:ring-blue-500"
-                      />
-                    </div>
-
-                    <div>
-                      <label htmlFor="phone" className="block text-sm font-medium text-gray-700 mb-1">
-                        Telefone
-                      </label>
-                      <input
-                        type="tel"
-                        id="phone"
-                        name="phone"
-                        value={companyData.phone}
-                        onChange={handleInputChange}
-                        className="w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-1 focus:ring-blue-500"
-                      />
-                    </div>
-
-                    <div>
-                      <label htmlFor="email" className="block text-sm font-medium text-gray-700 mb-1">
-                        Email
-                      </label>
-                      <input
-                        type="email"
-                        id="email"
-                        name="email"
-                        value={companyData.email}
-                        onChange={handleInputChange}
-                        className="w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-1 focus:ring-blue-500"
-                      />
-                    </div>
-
-                    <div className="md:col-span-2">
-                      <label htmlFor="address" className="block text-sm font-medium text-gray-700 mb-1">
-                        Endereço
-                      </label>
-                      <input
-                        type="text"
-                        id="address"
-                        name="address"
-                        value={companyData.address}
-                        onChange={handleInputChange}
-                        className="w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-1 focus:ring-blue-500"
-                      />
-                    </div>
-                  </div>
-
-                  {/* Licença Ambiental */}
-                  <div className="col-span-2 mt-4">
-                    <h3 className="text-lg font-medium text-gray-700 mb-3">Licença Ambiental</h3>
-                    <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                      <div>
-                        <label htmlFor="environmentalLicenseNumber" className="block text-sm font-medium text-gray-700 mb-1">
-                          Número da Licença Ambiental
-                        </label>
-                        <input
-                          type="text"
-                          id="environmentalLicenseNumber"
-                          name="environmental_license.number"
-                          value={companyData.environmental_license.number}
-                          onChange={handleInputChange}
-                          className="w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-1 focus:ring-blue-500"
+                  <div className="p-4 sm:p-6">
+                    <form onSubmit={handleSubmit} className="space-y-6">
+                      <div className="flex justify-center mb-6">
+                        <ImageUpload
+                          onFileSelect={handleLogoUpload}
+                          currentImageUrl={companyData.logo_url || ""}
                         />
                       </div>
-                      <div>
-                        <label htmlFor="environmentalLicenseDate" className="block text-sm font-medium text-gray-700 mb-1">
-                          Validade da Licença Ambiental
-                        </label>
-                        <input
-                          type="date"
-                          id="environmentalLicenseDate"
-                          name="environmental_license.date"
-                          value={companyData.environmental_license.date}
-                          onChange={handleInputChange}
-                          className="w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-1 focus:ring-blue-500"
-                        />
+
+                      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+                        <div className="col-span-1 md:col-span-2 lg:col-span-1">
+                          <label htmlFor="name" className="block text-sm font-medium text-gray-700 mb-1">
+                            Nome da Empresa
+                          </label>
+                          <input
+                            type="text"
+                            id="name"
+                            name="name"
+                            value={companyData.name}
+                            onChange={handleInputChange}
+                            className="w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent transition-all"
+                            placeholder="Digite o nome da empresa"
+                          />
+                        </div>
+
+                        <div>
+                          <label htmlFor="cnpj" className="block text-sm font-medium text-gray-700 mb-1">
+                            CNPJ
+                          </label>
+                          <input
+                            type="text"
+                            id="cnpj"
+                            name="cnpj"
+                            value={companyData.cnpj}
+                            onChange={handleInputChange}
+                            className="w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent transition-all"
+                            placeholder="00.000.000/0000-00"
+                          />
+                        </div>
+
+                        <div>
+                          <label htmlFor="phone" className="block text-sm font-medium text-gray-700 mb-1">
+                            Telefone
+                          </label>
+                          <input
+                            type="tel"
+                            id="phone"
+                            name="phone"
+                            value={companyData.phone}
+                            onChange={handleInputChange}
+                            className="w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent transition-all"
+                            placeholder="(00) 00000-0000"
+                          />
+                        </div>
+
+                        <div>
+                          <label htmlFor="email" className="block text-sm font-medium text-gray-700 mb-1">
+                            Email
+                          </label>
+                          <input
+                            type="email"
+                            id="email"
+                            name="email"
+                            value={companyData.email}
+                            onChange={handleInputChange}
+                            className="w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent transition-all"
+                            placeholder="contato@empresa.com"
+                          />
+                        </div>
+
+                        <div className="md:col-span-2">
+                          <label htmlFor="address" className="block text-sm font-medium text-gray-700 mb-1">
+                            Endereço
+                          </label>
+                          <input
+                            type="text"
+                            id="address"
+                            name="address"
+                            value={companyData.address}
+                            onChange={handleInputChange}
+                            className="w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent transition-all"
+                            placeholder="Rua, Número, Bairro, Cidade - UF"
+                          />
+                        </div>
+                      </div>
+                    </form>
+                  </div>
+                </div>
+
+                {/* Documentação */}
+                <div className="bg-white shadow-md rounded-lg overflow-hidden">
+                  <div className="bg-gray-50 px-4 py-3 border-b border-gray-200 flex items-center gap-2">
+                    <FileText className="h-5 w-5 text-blue-600" />
+                    <h3 className="text-lg font-medium text-gray-900">Documentação</h3>
+                  </div>
+                  <div className="p-4 sm:p-6 space-y-6">
+                    {/* Licença Ambiental */}
+                    <div>
+                      <h4 className="text-sm font-semibold text-gray-900 uppercase tracking-wider mb-3 flex items-center gap-2">
+                        <ShieldCheck className="h-4 w-4 text-green-600" />
+                        Licença Ambiental
+                      </h4>
+                      <div className="grid grid-cols-1 md:grid-cols-2 gap-4 bg-gray-50 p-4 rounded-lg border border-gray-100">
+                        <div>
+                          <label htmlFor="environmentalLicenseNumber" className="block text-sm font-medium text-gray-700 mb-1">
+                            Número da Licença
+                          </label>
+                          <input
+                            type="text"
+                            id="environmentalLicenseNumber"
+                            name="environmental_license.number"
+                            value={companyData.environmental_license.number}
+                            onChange={handleInputChange}
+                            className="w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent transition-all"
+                          />
+                        </div>
+                        <div>
+                          <label htmlFor="environmentalLicenseDate" className="block text-sm font-medium text-gray-700 mb-1">
+                            Validade
+                          </label>
+                          <input
+                            type="date"
+                            id="environmentalLicenseDate"
+                            name="environmental_license.date"
+                            value={companyData.environmental_license.date}
+                            onChange={handleInputChange}
+                            className="w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent transition-all"
+                          />
+                        </div>
+                      </div>
+                    </div>
+
+                    {/* Alvará Sanitário */}
+                    <div>
+                      <h4 className="text-sm font-semibold text-gray-900 uppercase tracking-wider mb-3 flex items-center gap-2">
+                        <ShieldCheck className="h-4 w-4 text-green-600" />
+                        Alvará Sanitário
+                      </h4>
+                      <div className="grid grid-cols-1 md:grid-cols-2 gap-4 bg-gray-50 p-4 rounded-lg border border-gray-100">
+                        <div>
+                          <label htmlFor="sanitaryPermitNumber" className="block text-sm font-medium text-gray-700 mb-1">
+                            Número do Alvará
+                          </label>
+                          <input
+                            type="text"
+                            id="sanitaryPermitNumber"
+                            name="sanitary_permit.number"
+                            value={companyData.sanitary_permit.number}
+                            onChange={handleInputChange}
+                            className="w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent transition-all"
+                          />
+                        </div>
+                        <div>
+                          <label htmlFor="sanitaryPermitExpiryDate" className="block text-sm font-medium text-gray-700 mb-1">
+                            Validade
+                          </label>
+                          <input
+                            type="date"
+                            id="sanitaryPermitExpiryDate"
+                            name="sanitary_permit.expiry_date"
+                            value={companyData.sanitary_permit.expiry_date}
+                            onChange={handleInputChange}
+                            className="w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent transition-all"
+                          />
+                        </div>
+                      </div>
+                    </div>
+
+                    <div className="flex justify-end pt-4 border-t border-gray-100">
+                      <div className="flex gap-3">
+                        {showSavedData && (
+                          <button
+                            type="button"
+                            onClick={handleDelete}
+                            className="px-4 py-2 bg-white border border-red-300 text-red-700 rounded-md hover:bg-red-50 focus:outline-none focus:ring-2 focus:ring-red-500 focus:ring-offset-2 flex items-center transition-colors"
+                          >
+                            <Trash2 className="w-4 h-4 mr-1.5" />
+                            Excluir Dados
+                          </button>
+                        )}
+                        <button
+                          type="button"
+                          onClick={handleSubmit}
+                          className="px-6 py-2 bg-blue-600 text-white rounded-md hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-offset-2 shadow-sm transition-colors font-medium"
+                        >
+                          Salvar Alterações
+                        </button>
                       </div>
                     </div>
                   </div>
+                </div>
 
-                  {/* Alvará Sanitário */}
-                  <div className="col-span-2 mt-4">
-                    <h3 className="text-lg font-medium text-gray-700 mb-3">Alvará Sanitário</h3>
-                    <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                      <div>
-                        <label htmlFor="sanitaryPermitNumber" className="block text-sm font-medium text-gray-700 mb-1">
-                          Número do Alvará Sanitário
+                {/* Assinaturas */}
+                <div className="bg-white shadow-md rounded-lg overflow-hidden">
+                  <div className="bg-gray-50 px-4 py-3 border-b border-gray-200 flex items-center gap-2">
+                    <Pen className="h-5 w-5 text-blue-600" />
+                    <h3 className="text-lg font-medium text-gray-900">Assinaturas Digitais</h3>
+                  </div>
+                  <div className="p-4 sm:p-6">
+                    <div>
+                      <div className="mb-6">
+                        <label className="block text-sm font-medium text-gray-700 mb-2">
+                          Selecione o Tipo de Assinatura
                         </label>
-                        <input
-                          type="text"
-                          id="sanitaryPermitNumber"
-                          name="sanitary_permit.number"
-                          value={companyData.sanitary_permit.number}
-                          onChange={handleInputChange}
-                          className="w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-1 focus:ring-blue-500"
-                        />
+                        <div className="relative">
+                          <select
+                            value={userData.signatureType}
+                            onChange={(e) => {
+                              handleSignatureTypeChange(e.target.value as 'controlador' | 'tecnico');
+                            }}
+                            className="w-full pl-4 pr-10 py-3 border border-gray-300 rounded-lg shadow-sm focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent appearance-none bg-white text-gray-700 text-base transition-all cursor-pointer hover:border-blue-400"
+                          >
+                            <option value="controlador">Controlador de Pragas</option>
+                            <option value="tecnico">Responsável Técnico</option>
+                          </select>
+                          <div className="pointer-events-none absolute inset-y-0 right-0 flex items-center px-3 text-gray-500">
+                            <ChevronDown className="h-5 w-5" />
+                          </div>
+                        </div>
                       </div>
-                      <div>
-                        <label htmlFor="sanitaryPermitExpiryDate" className="block text-sm font-medium text-gray-700 mb-1">
-                          Validade do Alvará Sanitário
-                        </label>
-                        <input
-                          type="date"
-                          id="sanitaryPermitExpiryDate"
-                          name="sanitary_permit.expiry_date"
-                          value={companyData.sanitary_permit.expiry_date}
-                          onChange={handleInputChange}
-                          className="w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-1 focus:ring-blue-500"
-                        />
-                      </div>
+
+                      {userData.signatureType === 'controlador' && (
+                        <form onSubmit={handleSaveControlador} className="bg-gray-50 rounded-xl p-6 border border-gray-200 shadow-sm">
+                          <h4 className="text-lg font-semibold text-gray-900 mb-5 flex items-center gap-2 pb-3 border-b border-gray-200">
+                            <Users className="h-5 w-5 text-gray-500" />
+                            Dados do Controlador
+                          </h4>
+                          <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                            <div className="md:col-span-2">
+                              <label className="block text-sm font-medium text-gray-700 mb-1">
+                                Nome Completo
+                              </label>
+                              <input
+                                type="text"
+                                value={userData.name}
+                                onChange={(e) => setUserData((prev) => ({ ...prev, name: e.target.value }))}
+                                className="w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                                placeholder="Nome do profissional"
+                              />
+                            </div>
+                            <div>
+                              <label className="block text-sm font-medium text-gray-700 mb-1">
+                                Telefone
+                              </label>
+                              <input
+                                type="tel"
+                                value={userData.phone}
+                                onChange={(e) => setUserData((prev) => ({ ...prev, phone: e.target.value }))}
+                                className="w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                                placeholder="(00) 00000-0000"
+                              />
+                            </div>
+                            <div>
+                              <label className="block text-sm font-medium text-gray-700 mb-1">
+                                E-mail
+                              </label>
+                              <input
+                                type="email"
+                                value={userData.email}
+                                onChange={(e) => setUserData((prev) => ({ ...prev, email: e.target.value }))}
+                                className="w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                                placeholder="email@exemplo.com"
+                              />
+                            </div>
+                            <div className="md:col-span-2">
+                              <label className="block text-sm font-medium text-gray-700 mb-2">
+                                Assinatura Digital
+                              </label>
+                              <div className="border-2 border-dashed border-gray-300 rounded-lg p-4 bg-white hover:border-blue-400 transition-colors">
+                                <div className="flex justify-between items-center mb-3">
+                                  <span className="text-sm text-gray-500 flex items-center gap-1">
+                                    <Pen className="w-4 h-4" />
+                                    Desenhe no campo abaixo
+                                  </span>
+                                  <div className="flex gap-2">
+                                    {userData.signature && (
+                                      <button
+                                        type="button"
+                                        onClick={() => handleViewSignature('controlador')}
+                                        className="text-xs bg-blue-50 text-blue-600 px-2 py-1 rounded hover:bg-blue-100 flex items-center gap-1 transition-colors"
+                                      >
+                                        <Eye className="w-3 h-3" /> Ver
+                                      </button>
+                                    )}
+                                    <button
+                                      type="button"
+                                      onClick={clearControladorSignature}
+                                      className="text-xs bg-red-50 text-red-600 px-2 py-1 rounded hover:bg-red-100 flex items-center gap-1 transition-colors"
+                                    >
+                                      <Trash2 className="w-3 h-3" /> Limpar
+                                    </button>
+                                  </div>
+                                </div>
+                                <canvas
+                                  ref={canvasControladorRef}
+                                  width={600}
+                                  height={200}
+                                  onMouseDown={startDrawingControlador}
+                                  onMouseMove={drawControlador}
+                                  onMouseUp={stopDrawingControlador}
+                                  onMouseOut={stopDrawingControlador}
+                                  onTouchStart={startDrawingControlador}
+                                  onTouchMove={drawControlador}
+                                  onTouchEnd={stopDrawingControlador}
+                                  className="w-full h-48 bg-white cursor-crosshair touch-none rounded border border-gray-100 shadow-inner"
+                                />
+                                <p className="text-xs text-gray-400 mt-2 text-center">
+                                  Use o mouse ou o dedo para assinar
+                                </p>
+                              </div>
+                            </div>
+                          </div>
+                          <div className="flex justify-end mt-6">
+                            <button
+                              type="submit"
+                              className="px-6 py-2 bg-blue-600 text-white rounded-md hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-offset-2 shadow-sm font-medium transition-colors"
+                            >
+                              Salvar Controlador
+                            </button>
+                          </div>
+                        </form>
+                      )}
+
+                      {userData.signatureType === 'tecnico' && (
+                        <form onSubmit={handleSaveTecnico} className="bg-gray-50 rounded-xl p-6 border border-gray-200 shadow-sm">
+                          <h4 className="text-lg font-semibold text-gray-900 mb-5 flex items-center gap-2 pb-3 border-b border-gray-200">
+                            <ShieldCheck className="h-5 w-5 text-gray-500" />
+                            Dados do Responsável Técnico
+                          </h4>
+                          <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                            <div className="md:col-span-2">
+                              <label className="block text-sm font-medium text-gray-700 mb-1">
+                                Nome Completo
+                              </label>
+                              <input
+                                type="text"
+                                value={userData.tecnicoName}
+                                onChange={(e) => setUserData((prev) => ({ ...prev, tecnicoName: e.target.value }))}
+                                className="w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                                placeholder="Nome do engenheiro/técnico"
+                              />
+                            </div>
+                            <div>
+                              <label className="block text-sm font-medium text-gray-700 mb-1">
+                                CREA / Registro
+                              </label>
+                              <input
+                                type="text"
+                                value={userData.tecnicoCrea}
+                                onChange={(e) => setUserData((prev) => ({ ...prev, tecnicoCrea: e.target.value }))}
+                                className="w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                                placeholder="Número do registro"
+                              />
+                            </div>
+                            <div>
+                              <label className="block text-sm font-medium text-gray-700 mb-1">
+                                Telefone
+                              </label>
+                              <input
+                                type="tel"
+                                value={userData.tecnicoPhone}
+                                onChange={(e) => setUserData((prev) => ({ ...prev, tecnicoPhone: e.target.value }))}
+                                className="w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                                placeholder="(00) 00000-0000"
+                              />
+                            </div>
+                            <div className="md:col-span-2">
+                              <label className="block text-sm font-medium text-gray-700 mb-1">
+                                E-mail
+                              </label>
+                              <input
+                                type="email"
+                                value={userData.tecnicoEmail}
+                                onChange={(e) => setUserData((prev) => ({ ...prev, tecnicoEmail: e.target.value }))}
+                                className="w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                                placeholder="email@exemplo.com"
+                              />
+                            </div>
+                            <div className="md:col-span-2">
+                              <label className="block text-sm font-medium text-gray-700 mb-2">
+                                Assinatura Digital
+                              </label>
+                              <div className="border-2 border-dashed border-gray-300 rounded-lg p-4 bg-white hover:border-blue-400 transition-colors">
+                                <div className="flex justify-between items-center mb-3">
+                                  <span className="text-sm text-gray-500 flex items-center gap-1">
+                                    <Pen className="w-4 h-4" />
+                                    Desenhe no campo abaixo
+                                  </span>
+                                  <div className="flex gap-2">
+                                    {userData.tecnicoSignature && (
+                                      <button
+                                        type="button"
+                                        onClick={() => handleViewSignature('tecnico')}
+                                        className="text-xs bg-blue-50 text-blue-600 px-2 py-1 rounded hover:bg-blue-100 flex items-center gap-1 transition-colors"
+                                      >
+                                        <Eye className="w-3 h-3" /> Ver
+                                      </button>
+                                    )}
+                                    <button
+                                      type="button"
+                                      onClick={clearTecnicoSignature}
+                                      className="text-xs bg-red-50 text-red-600 px-2 py-1 rounded hover:bg-red-100 flex items-center gap-1 transition-colors"
+                                    >
+                                      <Trash2 className="w-3 h-3" /> Limpar
+                                    </button>
+                                  </div>
+                                </div>
+                                <canvas
+                                  ref={canvasTecnicoRef}
+                                  width={600}
+                                  height={200}
+                                  onMouseDown={startDrawingTecnico}
+                                  onMouseMove={drawTecnico}
+                                  onMouseUp={stopDrawingTecnico}
+                                  onMouseOut={stopDrawingTecnico}
+                                  onTouchStart={startDrawingTecnico}
+                                  onTouchMove={drawTecnico}
+                                  onTouchEnd={stopDrawingTecnico}
+                                  className="w-full h-48 bg-white cursor-crosshair touch-none rounded border border-gray-100 shadow-inner"
+                                />
+                                <p className="text-xs text-gray-400 mt-2 text-center">
+                                  Use o mouse ou o dedo para assinar
+                                </p>
+                              </div>
+                            </div>
+                          </div>
+                          <div className="flex justify-end mt-6">
+                            <button
+                              type="submit"
+                              className="px-6 py-2 bg-blue-600 text-white rounded-md hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-offset-2 shadow-sm font-medium transition-colors"
+                            >
+                              Salvar Responsável Técnico
+                            </button>
+                          </div>
+                        </form>
+                      )}
                     </div>
                   </div>
-
-                  <div className="flex justify-end mt-6 space-x-3">
-                    {showSavedData && (
-                      <button
-                        type="button"
-                        onClick={handleDelete}
-                        className="px-4 py-2 bg-red-500 text-white rounded-md hover:bg-red-600 focus:outline-none focus:ring-2 focus:ring-red-500 focus:ring-offset-2 flex items-center"
-                      >
-                        <Trash2 className="w-4 h-4 mr-1.5" />
-                        Excluir
-                      </button>
-                    )}
-                    <button
-                      type="submit"
-                      className="px-4 py-2 bg-blue-500 text-white rounded-md hover:bg-blue-600 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-offset-2"
-                    >
-                      Salvar
-                    </button>
-                  </div>
-                </form>
+                </div>
               </div>
             )}
 
@@ -811,233 +1047,11 @@ export const AdminPage = () => {
 
             {activeTab === 'usuarios' && (
               <div className="bg-white shadow rounded-lg p-3 sm:p-6">
-                <h2 className="text-xl sm:text-2xl font-bold text-gray-900 mb-4 sm:mb-6">Usuários</h2>
-                <div className="space-y-8">
-                  <div className="space-y-4 max-w-2xl">
-                    <div className="grid grid-cols-1 gap-4">
-                      <div>
-                        <label className="block text-sm font-medium text-gray-700 mb-1">
-                          Tipo de Usuário/Assinatura
-                        </label>
-                        <select
-                          value={userData.signatureType}
-                          onChange={(e) => {
-                            handleSignatureTypeChange(e.target.value as 'controlador' | 'tecnico');
-                          }}
-                          className="w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-1 focus:ring-blue-500"
-                        >
-                          <option value="controlador">Controlador de pragas</option>
-                          <option value="tecnico">Responsável técnico</option>
-                        </select>
-                      </div>
-
-                      {userData.signatureType === 'controlador' && (
-                        <form onSubmit={handleSaveControlador} className="border border-gray-200 rounded-lg p-4 space-y-4">
-                          <h3 className="text-lg font-medium text-gray-900 mb-4">
-                            Dados do Controlador de Pragas
-                          </h3>
-                          <div className="space-y-4">
-                            <div>
-                              <label className="block text-sm font-medium text-gray-700 mb-1">
-                                Nome do Controlador de Pragas
-                              </label>
-                              <input
-                                type="text"
-                                value={userData.name}
-                                onChange={(e) => setUserData((prev) => ({ ...prev, name: e.target.value }))}
-                                className="w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-1 focus:ring-blue-500"
-                              />
-                            </div>
-                            <div>
-                              <label className="block text-sm font-medium text-gray-700 mb-1">
-                                Telefone do Controlador de pragas
-                              </label>
-                              <input
-                                type="tel"
-                                value={userData.phone}
-                                onChange={(e) => setUserData((prev) => ({ ...prev, phone: e.target.value }))}
-                                className="w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-1 focus:ring-blue-500"
-                              />
-                            </div>
-                            <div>
-                              <label className="block text-sm font-medium text-gray-700 mb-1">
-                                E-mail do controlador de pragas
-                              </label>
-                              <input
-                                type="email"
-                                value={userData.email}
-                                onChange={(e) => setUserData((prev) => ({ ...prev, email: e.target.value }))}
-                                className="w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-1 focus:ring-blue-500"
-                              />
-                            </div>
-                            <div>
-                              <label className="block text-sm font-medium text-gray-700 mb-1">
-                                Assinatura do controlador de pragas
-                              </label>
-                              <div className="border border-gray-300 rounded-md p-2">
-                                <div className="flex justify-between items-center mb-2">
-                                  <span className="text-sm text-gray-500">
-                                    <Pen className="inline-block w-4 h-4 mr-1" />
-                                    Desenhe sua assinatura abaixo
-                                  </span>
-                                  <div className="flex space-x-2">
-                                    {userData.signature && (
-                                      <button
-                                        type="button"
-                                        onClick={() => handleViewSignature('controlador')}
-                                        className="text-sm text-blue-600 hover:text-blue-700 flex items-center"
-                                      >
-                                        <Eye className="w-4 h-4 mr-1" /> Visualizar
-                                      </button>
-                                    )}
-                                    <button
-                                      type="button"
-                                      onClick={clearControladorSignature}
-                                      className="text-sm text-red-600 hover:text-red-700 flex items-center"
-                                    >
-                                      <Trash2 className="w-4 h-4 mr-1" /> Limpar
-                                    </button>
-                                  </div>
-                                </div>
-                                <canvas
-                                  ref={canvasControladorRef}
-                                  width={400}
-                                  height={200}
-                                  onMouseDown={startDrawingControlador}
-                                  onMouseMove={drawControlador}
-                                  onMouseUp={stopDrawingControlador}
-                                  onMouseOut={stopDrawingControlador}
-                                  onTouchStart={startDrawingControlador}
-                                  onTouchMove={drawControlador}
-                                  onTouchEnd={stopDrawingControlador}
-                                  className="border border-gray-200 rounded w-full bg-white cursor-crosshair"
-                                  style={{ touchAction: 'none' }}
-                                />
-                              </div>
-                            </div>
-                          </div>
-                          <div className="flex justify-end">
-                            <button
-                              type="submit"
-                              className="px-4 py-2 bg-blue-600 text-white rounded-md hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-offset-2"
-                            >
-                              Salvar Dados do Controlador
-                            </button>
-                          </div>
-                        </form>
-                      )}
-
-                      {userData.signatureType === 'tecnico' && (
-                        <form onSubmit={handleSaveTecnico} className="border border-gray-200 rounded-lg p-4 space-y-4">
-                          <h3 className="text-lg font-medium text-gray-900 mb-4">
-                            Dados do Responsável Técnico
-                          </h3>
-                          <div className="space-y-4">
-                            <div>
-                              <label className="block text-sm font-medium text-gray-700 mb-1">
-                                Nome do Responsável Técnico
-                              </label>
-                              <input
-                                type="text"
-                                value={userData.tecnicoName}
-                                onChange={(e) => setUserData((prev) => ({ ...prev, tecnicoName: e.target.value }))}
-                                className="w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-1 focus:ring-blue-500"
-                              />
-                            </div>
-                            <div>
-                              <label className="block text-sm font-medium text-gray-700 mb-1">
-                                CREA
-                              </label>
-                              <input
-                                type="text"
-                                value={userData.tecnicoCrea}
-                                onChange={(e) => setUserData((prev) => ({ ...prev, tecnicoCrea: e.target.value }))}
-                                className="w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-1 focus:ring-blue-500"
-                              />
-                            </div>
-                            <div>
-                              <label className="block text-sm font-medium text-gray-700 mb-1">
-                                Telefone do Responsável Técnico
-                              </label>
-                              <input
-                                type="tel"
-                                value={userData.tecnicoPhone}
-                                onChange={(e) => setUserData((prev) => ({ ...prev, tecnicoPhone: e.target.value }))}
-                                className="w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-1 focus:ring-blue-500"
-                              />
-                            </div>
-                            <div>
-                              <label className="block text-sm font-medium text-gray-700 mb-1">
-                                E-mail do Responsável Técnico
-                              </label>
-                              <input
-                                type="email"
-                                value={userData.tecnicoEmail}
-                                onChange={(e) => setUserData((prev) => ({ ...prev, tecnicoEmail: e.target.value }))}
-                                className="w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-1 focus:ring-blue-500"
-                              />
-                            </div>
-                            <div>
-                              <label className="block text-sm font-medium text-gray-700 mb-1">
-                                Assinatura do Respnsável Técnico
-                              </label>
-                              <div className="border border-gray-300 rounded-md p-2">
-                                <div className="flex justify-between items-center mb-2">
-                                  <span className="text-sm text-gray-500">
-                                    <Pen className="inline-block w-4 h-4 mr-1" />
-                                    Desenhe sua assinatura abaixo
-                                  </span>
-                                  <div className="flex space-x-2">
-                                    {userData.tecnicoSignature && (
-                                      <button
-                                        type="button"
-                                        onClick={() => handleViewSignature('tecnico')}
-                                        className="text-sm text-blue-600 hover:text-blue-700 flex items-center"
-                                      >
-                                        <Eye className="w-4 h-4 mr-1" /> Visualizar
-                                      </button>
-                                    )}
-                                    <button
-                                      type="button"
-                                      onClick={clearTecnicoSignature}
-                                      className="text-sm text-red-600 hover:text-red-700 flex items-center"
-                                    >
-                                      <Trash2 className="w-4 h-4 mr-1" /> Limpar
-                                    </button>
-                                  </div>
-                                </div>
-                                <canvas
-                                  ref={canvasTecnicoRef}
-                                  width={400}
-                                  height={200}
-                                  onMouseDown={startDrawingTecnico}
-                                  onMouseMove={drawTecnico}
-                                  onMouseUp={stopDrawingTecnico}
-                                  onMouseOut={stopDrawingTecnico}
-                                  onTouchStart={startDrawingTecnico}
-                                  onTouchMove={drawTecnico}
-                                  onTouchEnd={stopDrawingTecnico}
-                                  className="border border-gray-200 rounded w-full bg-white cursor-crosshair"
-                                  style={{ touchAction: 'none' }}
-                                />
-                              </div>
-                            </div>
-                          </div>
-                          <div className="flex justify-end">
-                            <button
-                              type="submit"
-                              className="px-4 py-2 bg-blue-600 text-white rounded-md hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-offset-2"
-                            >
-                              Salvar Dados do Técnico
-                            </button>
-                          </div>
-                        </form>
-                      )}
-                    </div>
-                  </div>
-                </div>
+                <AdminUsers companyId={companyData.id} />
               </div>
             )}
+
+
 
             {activeTab === 'downloads' && (
               <div className="bg-white shadow rounded-lg p-3 sm:p-6">

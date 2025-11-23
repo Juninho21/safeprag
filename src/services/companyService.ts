@@ -1,4 +1,4 @@
-import { doc, getDoc, updateDoc, serverTimestamp } from 'firebase/firestore';
+import { doc, getDoc, setDoc, serverTimestamp } from 'firebase/firestore';
 import { ref, uploadBytes, getDownloadURL } from 'firebase/storage';
 import { db, storage } from '../config/firebase';
 import type { Company } from '../types/company.types';
@@ -46,7 +46,8 @@ export const saveCompany = async (
     updateData.updated_at = serverTimestamp();
 
     const docRef = doc(db, 'companies', companyId);
-    await updateDoc(docRef, updateData);
+    // Use setDoc com merge: true para criar se não existir ou atualizar se existir
+    await setDoc(docRef, updateData, { merge: true });
   } catch (error) {
     console.error('Erro ao atualizar empresa:', error);
     throw error;
@@ -137,6 +138,10 @@ export const saveCompanyToLocalStorage = async (data: CompanyData, logoFile?: Fi
     }
 
     updatedData.updated_at = new Date().toISOString();
+
+    if (!updatedData.id) {
+      updatedData.id = crypto.randomUUID();
+    }
 
     localStorage.setItem(COMPANY_STORAGE_KEY, JSON.stringify(updatedData));
 

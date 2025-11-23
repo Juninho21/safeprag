@@ -6,6 +6,7 @@ import { GoogleAuthProvider, signInWithPopup, signInWithEmailAndPassword, signIn
 import { Capacitor } from '@capacitor/core';
 import { GoogleAuth } from '@belongnet/capacitor-google-auth';
 import { FcGoogle } from 'react-icons/fc';
+import { useAuth } from '../../contexts/AuthContext';
 // import { toast } from 'react-toastify'; // Removido
 
 export function Login() {
@@ -16,6 +17,7 @@ export function Login() {
   const [info, setInfo] = useState<string | null>(null);
   const navigate = useNavigate();
   const authAvailable = Boolean(auth);
+  const { user, role, loading: authLoading } = useAuth();
 
   // Detecta plataforma (mantemos para escolher fluxo, mas não ocultar botão)
   const isAndroid = Capacitor.getPlatform() === 'android';
@@ -33,6 +35,21 @@ export function Login() {
     }
   }, []);
 
+  // Redirecionamento baseado no papel do usuário
+  useEffect(() => {
+    if (!authLoading && user && role) {
+      if (role === 'superuser' || role === 'admin') {
+        navigate('/configuracoes/empresa');
+      } else if (role === 'controlador') {
+        navigate('/');
+      } else if (role === 'cliente') {
+        navigate('/downloads');
+      } else {
+        navigate('/');
+      }
+    }
+  }, [authLoading, user, role, navigate]);
+
   const handleLogin = async (e: React.FormEvent) => {
     e.preventDefault();
     setLoading(true);
@@ -46,7 +63,7 @@ export function Login() {
       }
       // Autenticação com e-mail e senha (Firebase Auth)
       await signInWithEmailAndPassword(auth, email, password);
-      navigate('/');
+      // Navegação será tratada pelo useEffect
     } catch (err: any) {
       const message = err?.message || 'Erro ao fazer login. Tente novamente.';
       setError(message);
@@ -111,12 +128,12 @@ export function Login() {
 
         const credential = GoogleAuthProvider.credential(idToken || undefined, accessToken || undefined);
         await signInWithCredential(auth, credential);
-        navigate('/');
+        // Navegação será tratada pelo useEffect
       } else {
         // Fallback web (PWA/desktop)
         const provider = new GoogleAuthProvider();
         await signInWithPopup(auth, provider);
-        navigate('/');
+        // Navegação será tratada pelo useEffect
       }
     } catch (err: any) {
       const rawCode = err?.code ?? err?.status ?? err?.error ?? '';
@@ -229,7 +246,7 @@ export function Login() {
             <FcGoogle size={20} />
             {loading ? 'Aguarde...' : 'Entrar com Google'}
           </button>
-          
+
           {/* Link de cadastro removido */}
         </form>
       </div>

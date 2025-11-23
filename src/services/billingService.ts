@@ -33,9 +33,15 @@ export const billingService = {
       return { active: true, status: 'active', updatedAt: new Date().toISOString(), customerId: 'owner' };
     }
 
-    const res = await fetch(`${API_BASE}/billing/status/${encodeURIComponent(companyId)}`);
-    if (!res.ok) throw new Error(`Falha ao obter status da assinatura: ${res.status}`);
-    return await res.json();
+    try {
+      const res = await fetch(`${API_BASE}/billing/status/${encodeURIComponent(companyId)}`);
+      if (!res.ok) throw new Error(`Falha ao obter status da assinatura: ${res.status}`);
+      return await res.json();
+    } catch (error) {
+      console.warn('Billing check failed, falling back to active (offline/dev mode):', error);
+      // Fallback para permitir uso quando offline ou sem backend acessível (comum no Android dev)
+      return { active: true, status: 'active_fallback', updatedAt: new Date().toISOString() };
+    }
   },
 
   async getPriceInfo(): Promise<{ priceId: string; currency: string; unit_amount: number; recurring?: any; product?: { id: string; name: string; description?: string | null } | null; }> {
@@ -74,8 +80,7 @@ export const billingService = {
     return (await res.json()) as { id?: string; url?: string };
   },
 
-  async getPrices(): Promise<{ data: Array<{ priceId: string; currency: string; unit_amount: number; recurring?: any; product?: { id: string; name: string; description?: string | null } | null; }> }>
-  {
+  async getPrices(): Promise<{ data: Array<{ priceId: string; currency: string; unit_amount: number; recurring?: any; product?: { id: string; name: string; description?: string | null } | null; }> }> {
     const res = await fetch(`${API_BASE}/billing/prices`);
     if (!res.ok) {
       try {

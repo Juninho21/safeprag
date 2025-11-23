@@ -16,6 +16,14 @@ service cloud.firestore {
       return request.auth.token.role;
     }
     
+    // Verifica se é o dono (hardcoded email check for safety + custom claim)
+    function isOwner() {
+      return isAuthenticated() && (
+        request.auth.token.email == 'juninhomarinho22@gmail.com' || 
+        request.auth.token.role == 'owner'
+      );
+    }
+    
     // Obtém o companyId do usuário dos custom claims
     function getCompanyId() {
       return request.auth.token.companyId;
@@ -40,16 +48,34 @@ service cloud.firestore {
     // Companies Collection
     // ========================================
     
+    // ========================================
+    // Users Collection (Top Level)
+    // ========================================
+    
+    match /users/{userId} {
+      // O próprio usuário pode ler/escrever seus dados
+      allow read, update, delete: if isAuthenticated() && request.auth.uid == userId;
+      
+      // Admins podem ler usuários da sua própria empresa
+      allow read: if isAuthenticated() && getRole() == 'admin' && resource.data.companyId == getCompanyId();
+    }
+
+    // ========================================
+    // Companies Collection
+    // ========================================
+    
     match /companies/{companyId} {
-      // Usuários podem ler dados da própria empresa
-      allow read: if isSameCompany(companyId);
+      // Usuários podem ler dados da própria empresa (via token ou lista de usuários)
+      allow read: if isOwner() || isSameCompany(companyId) || (isAuthenticated() && resource.data.keys().hasAny(['users']) && request.auth.uid in resource.data.users);
       
       // Apenas admins podem atualizar dados da empresa
       allow update: if isSameCompany(companyId) && isAdmin();
       
-      // Criar e deletar empresas só via Admin API (service account)
-      // Usuários normais não podem criar/deletar empresas
-      allow create, delete: if false;
+      // Superusuário pode criar empresas (role 'superuser' deve estar no token)
+      allow create: if isAuthenticated() && request.auth.token.role == 'superuser';
+      
+      // Deletar apenas via Admin API ou superuser
+      allow delete: if false;
       
       // ========================================
       // Subcoleções da Empresa

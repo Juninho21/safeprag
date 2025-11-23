@@ -1,6 +1,7 @@
-export type Role = 'admin' | 'controlador' | 'cliente';
+export type Role = 'superuser' | 'admin' | 'controlador' | 'cliente';
 
 export const ROLES = {
+  SUPERUSER: 'superuser',
   ADMIN: 'admin',
   CONTROLADOR: 'controlador',
   CLIENTE: 'cliente',

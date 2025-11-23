@@ -1,7 +1,7 @@
 /* eslint-disable no-undef */
 import { auth } from '../config/firebase';
 
-const API_BASE = import.meta.env.VITE_ADMIN_API_URL || 'http://localhost:4000';
+const API_BASE = import.meta.env.VITE_ADMIN_API_URL || 'https://us-central1-safeprag-0825.cloudfunctions.net/api';
 
 async function getToken(): Promise<string> {
   const user = auth?.currentUser;
@@ -77,4 +77,14 @@ export async function deleteUser(uid: string): Promise<void> {
     headers: { Authorization: `Bearer ${token}` },
   });
   if (!res.ok) throw new Error(`Falha ao excluir usuário: ${res.status}`);
+}
+
+export async function listCompanies(): Promise<any[]> {
+  const token = await getToken();
+  const res = await fetch(`${API_BASE}/admin/companies`, {
+    headers: { Authorization: `Bearer ${token}` },
+  });
+  if (!res.ok) throw new Error(`Falha ao listar empresas: ${res.status}`);
+  const data = await res.json();
+  return data.companies || [];
 }
