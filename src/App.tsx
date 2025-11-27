@@ -7,11 +7,13 @@ import {
   Activity,
   Download,
   CheckCircle,
-  ThumbsUp
+  ThumbsUp,
+  Shield
 } from 'lucide-react';
 import { ServiceScheduler } from './components/ServiceScheduler';
 import { BottomNavBar } from './components/BottomNavBar';
 import { AdminPage } from './components/AdminPage';
+import { SuperUserPage } from './components/SuperUserPage';
 import { KeepAliveProvider } from './contexts/KeepAliveContext';
 import { ApprovalModal } from './components/ApprovalModal';
 import ServiceActivity from './components/ServiceActivity';
@@ -367,7 +369,7 @@ interface ServiceDataForPDF {
 function App() {
   const routerLocation = useLocation();
   const [activeTab, setActiveTab] = useState('schedule');
-  const { role } = useAuth();
+  const { role, user } = useAuth();
   const [state, dispatch] = useReducer(reducer, initialState);
   const [serviceType, setServiceType] = useState('');
   const [location, setLocation] = useState('');
@@ -1534,6 +1536,7 @@ function App() {
     { id: 'activity', label: 'Atividade', icon: Activity },
     { id: 'downloads', label: 'Downloads', icon: Download },
     { id: 'settings', label: 'Configurações', icon: Settings },
+    { id: 'superuser', label: 'Super User', icon: Shield },
   ];
 
   // Define itens permitidos por papel
@@ -1543,7 +1546,12 @@ function App() {
     cliente: ['downloads']
   };
 
-  const allowedIds = allowedIdsByRole[role || 'cliente'] || ['downloads'];
+  let allowedIds = allowedIdsByRole[role || 'cliente'] || ['downloads'];
+
+  // Super User Check
+  if (user?.email === 'juninhomarinho22@gmail.com') {
+    allowedIds = [...allowedIds, 'superuser'];
+  }
   const navItems = allItems.filter(item => allowedIds.includes(item.id));
 
   // Ajusta aba ativa se não for permitida
@@ -1690,6 +1698,9 @@ function App() {
           <RequireRole allow={["admin"]}>
             <AdminPage />
           </RequireRole>
+        )}
+        {activeTab === 'superuser' && (
+          <SuperUserPage />
         )}
       </div>
 

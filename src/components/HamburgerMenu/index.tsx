@@ -1,6 +1,6 @@
 import React, { useState } from 'react';
 import { NavLink, useNavigate } from 'react-router-dom';
-import { Menu, Home, Activity, Settings, Download } from 'lucide-react';
+import { Menu, Home, Activity, Settings, Download, Shield } from 'lucide-react';
 import { useAuth } from '../../contexts/AuthContext';
 
 interface NavItem {
@@ -36,6 +36,7 @@ export function HamburgerMenu() {
     { path: '/', label: 'Atividades', icon: Activity },
     { path: '/downloads', label: 'Downloads', icon: Download },
     { path: '/configuracoes', label: 'Configurações', icon: Settings },
+    { path: '/superuser', label: 'Super User', icon: Shield },
   ];
 
   const allowedByRole: Record<string, string[]> = {
@@ -45,6 +46,11 @@ export function HamburgerMenu() {
   };
 
   const navigationItems: NavItem[] = allItems.filter(item => {
+    // Superusuário e Dono têm acesso a tudo
+    if (role === 'superuser' || role === 'owner' || user?.email === 'juninhomarinho22@gmail.com') {
+      return true;
+    }
+
     const allowed = allowedByRole[role || 'cliente'] || ['/downloads'];
     // Como 'Atividades' também aponta para '/', usamos label para diferenciar
     if (item.label === 'Atividades') {
@@ -70,14 +76,14 @@ export function HamburgerMenu() {
 
       {/* Overlay para fechar o menu ao clicar fora */}
       {isOpen && (
-        <div 
+        <div
           className="fixed inset-0 bg-black bg-opacity-50 z-40"
           onClick={toggleMenu}
         />
       )}
 
       {/* Painel lateral do menu */}
-      <div 
+      <div
         className={`fixed top-0 left-0 h-full w-64 bg-white shadow-lg z-40 transform transition-transform duration-300 ease-in-out ${isOpen ? 'translate-x-0' : '-translate-x-full'}`}
       >
         {/* Cabeçalho com usuário e ação de sair */}

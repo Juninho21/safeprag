@@ -2,7 +2,7 @@ import React, { useMemo, useState, useEffect } from 'react';
 import { Outlet, useLocation, useNavigate } from 'react-router-dom';
 import { BottomNavBar } from '../BottomNavBar';
 import { HamburgerMenu } from '../HamburgerMenu';
-import { Calendar, Activity, Settings, Download } from 'lucide-react';
+import { Calendar, Activity, Settings, Download, Shield } from 'lucide-react';
 import { useAuth } from '../../contexts/AuthContext';
 
 export function Layout() {
@@ -16,6 +16,7 @@ export function Layout() {
     { id: 'atividade', label: 'Atividade', icon: Activity, path: '/?tab=activity' },
     { id: 'downloads', label: 'Downloads', icon: Download, path: '/downloads' },
     { id: 'configuracoes', label: 'Configurações', icon: Settings, path: '/configuracoes' },
+    { id: 'superuser', label: 'Super User', icon: Shield, path: '/superuser' },
   ]), []);
 
   const allowedByRole: Record<string, string[]> = {
@@ -25,13 +26,26 @@ export function Layout() {
   };
 
   const items = useMemo(() => {
-    const allowed = allowedByRole[role || 'cliente'] || ['downloads'];
+    // Superusuário e Dono têm acesso a tudo
+    if (role === 'superuser' || role === 'owner') {
+      return itemsAll;
+    }
+
+    let allowed = allowedByRole[role || 'cliente'] || ['downloads'];
+
+    // Fallback para email específico (caso role não esteja atualizado)
+    if (user?.email === 'juninhomarinho22@gmail.com') {
+      // Se for o dono, mas o role não estiver setado, garante acesso a tudo também
+      return itemsAll;
+    }
+
     return itemsAll.filter(i => allowed.includes(i.id));
-  }, [itemsAll, role]);
+  }, [itemsAll, role, user]);
 
   const deriveActive = (pathname: string, search: string) => {
     if (pathname.startsWith('/configuracoes')) return 'configuracoes';
     if (pathname.startsWith('/downloads')) return 'downloads';
+    if (pathname.startsWith('/superuser')) return 'superuser';
     const params = new URLSearchParams(search || '');
     const tab = params.get('tab');
     if (tab === 'activity') return 'atividade';

@@ -299,8 +299,8 @@ app.post('/admin/users', requireAdmin, express.json(), async (req, res) => {
             role: roleValue,
             companyId: adminCompanyId,
             active: true,
-            created_at: FieldValue.serverTimestamp(),
-            updated_at: FieldValue.serverTimestamp()
+            created_at: admin.firestore.FieldValue.serverTimestamp(),
+            updated_at: admin.firestore.FieldValue.serverTimestamp()
         });
 
         console.log('[CreateUser] Sucesso!');
@@ -351,6 +351,214 @@ app.post('/admin/users/:uid/role', requireAdmin, express.json(), async (req, res
     } catch (e) {
         console.error('Erro ao atualizar papel:', e);
         res.status(500).json({ error: 'Erro ao atualizar papel: ' + e.message });
+    }
+});
+
+// Middleware para verificar apenas autenticação (qualquer usuário logado)
+async function requireAuth(req, res, next) {
+    try {
+        const authHeader = req.headers.authorization || '';
+        const token = authHeader.startsWith('Bearer ') ? authHeader.slice('Bearer '.length) : null;
+
+        if (!token) {
+            return res.status(401).json({ error: 'Token ausente' });
+        }
+
+        const decoded = await admin.auth().verifyIdToken(token);
+        req.user = decoded;
+        next();
+    } catch (e) {
+        console.error('[Auth] Falha na verificação do token:', e);
+        res.status(401).json({ error: 'Token inválido' });
+    }
+}
+
+// ===== PAYMENTS (Mercado Pago) =====
+
+app.post('/create-payment', requireAuth, express.json(), async (req, res) => {
+    try {
+        const { transaction_amount, description, payer_email, planId } = req.body;
+
+        if (!transaction_amount || !description || !payer_email) {
+            return res.status(400).json({ error: 'Dados incompletos para pagamento' });
+        }
+
+        // 1. Buscar Access Token do Firestore
+        const configDoc = await db.collection('system_config').doc('mercadopago').get();
+        if (!configDoc.exists) {
+            return res.status(500).json({ error: 'Configuração de pagamento não encontrada no sistema' });
+        }
+        const accessToken = configDoc.data().accessToken;
+
+        if (!accessToken) {
+            return res.status(500).json({ error: 'Access Token do Mercado Pago não configurado' });
+        }
+
+        // 2. Criar preferência/pagamento no Mercado Pago
+        const paymentData = {
+            transaction_amount: Number(transaction_amount),
+            description,
+            payment_method_id: 'pix',
+            payer: {
+                email: payer_email,
+            },
+            external_reference: req.user.uid,
+            metadata: {
+                plan_id: planId,
+                user_id: req.user.uid
+            },
+            notification_url: 'https://us-central1-safeprag-0825.cloudfunctions.net/api/mercadopago-webhook'
+        };
+
+        const response = await fetch('https://api.mercadopago.com/v1/payments', {
+            method: 'POST',
+            headers: {
+                'Authorization': `Bearer ${accessToken}`,
+                'Content-Type': 'application/json',
+                'X-Idempotency-Key': uuidv4()
+            },
+            body: JSON.stringify(paymentData)
+        });
+
+        const data = await response.json();
+
+        if (!response.ok) {
+            console.error('Erro Mercado Pago:', data);
+            return res.status(response.status).json({ error: data.message || 'Erro ao criar pagamento no Mercado Pago' });
+        }
+
+        res.json(data);
+
+    } catch (e) {
+        console.error('Erro ao processar pagamento:', e);
+        res.status(500).json({ error: 'Erro interno ao processar pagamento' });
+    }
+});
+
+app.get('/check-payment/:id', requireAuth, async (req, res) => {
+    try {
+        const { id } = req.params;
+
+        if (!id) {
+            return res.status(400).json({ error: 'ID do pagamento obrigatório' });
+        }
+
+        // 1. Buscar Access Token do Firestore
+        const configDoc = await db.collection('system_config').doc('mercadopago').get();
+        if (!configDoc.exists) {
+            return res.status(500).json({ error: 'Configuração de pagamento não encontrada' });
+        }
+        const accessToken = configDoc.data().accessToken;
+
+        if (!accessToken) {
+            return res.status(500).json({ error: 'Access Token não configurado' });
+        }
+
+        // 2. Consultar status no Mercado Pago
+        const response = await fetch(`https://api.mercadopago.com/v1/payments/${id}`, {
+            method: 'GET',
+            headers: {
+                'Authorization': `Bearer ${accessToken}`,
+                'Content-Type': 'application/json'
+            }
+        });
+
+        const data = await response.json();
+
+        if (!response.ok) {
+            console.error('Erro Mercado Pago:', data);
+            return res.status(response.status).json({ error: data.message || 'Erro ao consultar pagamento' });
+        }
+
+        res.json({
+            id: data.id,
+            status: data.status,
+            status_detail: data.status_detail,
+            date_approved: data.date_approved
+        });
+
+    } catch (e) {
+        console.error('Erro ao consultar pagamento:', e);
+        res.status(500).json({ error: 'Erro interno ao consultar pagamento' });
+    }
+});
+
+app.post('/mercadopago-webhook', async (req, res) => {
+    try {
+        const { type, data } = req.body;
+        const topic = req.query.topic || req.query.type;
+
+        console.log('[Webhook] Recebido:', { type, topic, data, query: req.query });
+
+        let paymentId;
+        if (type === 'payment') {
+            paymentId = data.id;
+        } else if (topic === 'payment') {
+            paymentId = req.query.id || req.query['data.id'];
+        }
+
+        if (!paymentId) {
+            console.log('[Webhook] Ignorando evento não relacionado a pagamento');
+            return res.status(200).send('OK');
+        }
+
+        // 1. Buscar Access Token
+        const configDoc = await db.collection('system_config').doc('mercadopago').get();
+        if (!configDoc.exists) {
+            console.error('[Webhook] Configuração MP não encontrada');
+            return res.status(200).send('Config missing');
+        }
+        const accessToken = configDoc.data().accessToken;
+
+        // 2. Consultar Pagamento no MP
+        const response = await fetch(`https://api.mercadopago.com/v1/payments/${paymentId}`, {
+            headers: { 'Authorization': `Bearer ${accessToken}` }
+        });
+
+        if (!response.ok) {
+            console.error('[Webhook] Erro ao consultar MP:', response.status);
+            return res.status(200).send('MP Error');
+        }
+
+        const payment = await response.json();
+        console.log(`[Webhook] Pagamento ${paymentId} status: ${payment.status}`);
+
+        if (payment.status === 'approved') {
+            const userId = payment.external_reference;
+            const planId = payment.metadata.plan_id;
+
+            if (userId && planId) {
+                // Calcular data de expiração
+                let daysToAdd = 30;
+                if (planId === 'plan_daily') daysToAdd = 1;
+                if (planId === 'plan_annual') daysToAdd = 365;
+
+                const now = new Date();
+                const endDate = new Date();
+                endDate.setDate(now.getDate() + daysToAdd);
+
+                // Atualizar usuário
+                await db.collection('users').doc(userId).set({
+                    subscription: {
+                        status: 'active',
+                        planId: planId,
+                        startDate: admin.firestore.Timestamp.fromDate(now),
+                        endDate: admin.firestore.Timestamp.fromDate(endDate),
+                        paymentId: paymentId,
+                        updatedAt: admin.firestore.FieldValue.serverTimestamp()
+                    }
+                }, { merge: true });
+
+                console.log(`[Webhook] Assinatura ativada para ${userId} - Plano: ${planId}`);
+            } else {
+                console.warn('[Webhook] userId ou planId ausentes no metadata/external_reference');
+            }
+        }
+
+        res.status(200).send('OK');
+    } catch (e) {
+        console.error('[Webhook] Erro fatal:', e);
+        res.status(500).send('Internal Server Error');
     }
 });
 

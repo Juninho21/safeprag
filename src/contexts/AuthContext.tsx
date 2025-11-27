@@ -1,15 +1,24 @@
 import { createContext, useContext, useEffect, useState, ReactNode } from 'react';
-import { auth } from '../config/firebase';
+import { auth, db } from '../config/firebase';
 import { onAuthStateChanged, signOut, User as FirebaseUser } from 'firebase/auth';
+import { doc, onSnapshot } from 'firebase/firestore';
 import type { Role } from '../types/role';
 import { DEFAULT_ROLE } from '../types/role';
 import { storageService } from '../services/storageService';
+
+export interface Subscription {
+  status: 'active' | 'pending' | 'expired' | 'canceled';
+  planId: string;
+  endDate: any;
+  paymentId?: string;
+}
 
 interface AuthContextValue {
   user: FirebaseUser | null;
   loading: boolean;
   role: Role | null;
   companyId: string | null;
+  subscription: Subscription | null;
   logout: () => Promise<void>;
 }
 
@@ -20,48 +29,67 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const [loading, setLoading] = useState(true);
   const [role, setRole] = useState<Role | null>(null);
   const [companyId, setCompanyId] = useState<string | null>(null);
+  const [subscription, setSubscription] = useState<Subscription | null>(null);
 
   useEffect(() => {
-    // Se Auth não estiver disponível, mantém estado como não autenticado
     if (!auth) {
       setUser(null);
       setLoading(false);
       return;
     }
 
-    const unsubscribe = onAuthStateChanged(auth, async (currentUser) => {
+    let unsubscribeSnapshot: (() => void) | null = null;
+
+    const unsubscribeAuth = onAuthStateChanged(auth, async (currentUser) => {
       setUser(currentUser);
-      // Resolve a role e companyId a partir de claims do Firebase ou localStorage
+
+      // Cleanup previous snapshot listener
+      if (unsubscribeSnapshot) {
+        unsubscribeSnapshot();
+        unsubscribeSnapshot = null;
+      }
+
       try {
         let resolvedRole: Role | null = null;
         let resolvedCompanyId: string | null = null;
 
-        // Tenta obter dos claims do Firebase Auth
-        if (currentUser && typeof currentUser.getIdTokenResult === 'function') {
-          const token = await currentUser.getIdTokenResult();
-          const claimRole = token?.claims?.role as Role | undefined;
-          const claimCompanyId = token?.claims?.companyId as string | undefined;
+        if (currentUser) {
+          // 1. Get Claims
+          if (typeof currentUser.getIdTokenResult === 'function') {
+            const token = await currentUser.getIdTokenResult();
+            const claimRole = token?.claims?.role as Role | undefined;
+            const claimCompanyId = token?.claims?.companyId as string | undefined;
 
-          if (claimRole) {
-            resolvedRole = claimRole;
+            if (claimRole) resolvedRole = claimRole;
+            if (claimCompanyId) resolvedCompanyId = claimCompanyId;
           }
 
-          if (claimCompanyId) {
-            resolvedCompanyId = claimCompanyId;
+          // 2. Fallback to localStorage
+          if (!resolvedRole) {
+            const userData = storageService.getUserData();
+            const storedRole = userData?.role as Role | undefined;
+            if (storedRole) resolvedRole = storedRole;
           }
+
+          setRole(resolvedRole ?? DEFAULT_ROLE);
+          setCompanyId(resolvedCompanyId);
+
+          // 3. Setup Firestore Listener for Subscription
+          const userRef = doc(db, 'users', currentUser.uid);
+          unsubscribeSnapshot = onSnapshot(userRef, (docSnap) => {
+            if (docSnap.exists()) {
+              const data = docSnap.data();
+              setSubscription(data.subscription || null);
+            }
+          }, (error) => {
+            console.error("Error listening to user doc:", error);
+          });
+
+        } else {
+          setRole(DEFAULT_ROLE);
+          setCompanyId(null);
+          setSubscription(null);
         }
-
-        // Fallback: localStorage (USER_DATA)
-        if (!resolvedRole) {
-          const userData = storageService.getUserData();
-          const storedRole = userData?.role as Role | undefined;
-          if (storedRole) {
-            resolvedRole = storedRole;
-          }
-        }
-
-        setRole(resolvedRole ?? DEFAULT_ROLE);
-        setCompanyId(resolvedCompanyId);
       } catch (e) {
         console.warn('Falha ao resolver role/companyId do usuário:', e);
         setRole(DEFAULT_ROLE);
@@ -71,7 +99,10 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       }
     });
 
-    return () => unsubscribe();
+    return () => {
+      unsubscribeAuth();
+      if (unsubscribeSnapshot) unsubscribeSnapshot();
+    };
   }, []);
 
   const logout = async () => {
@@ -79,7 +110,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     await signOut(auth);
   };
 
-  const value: AuthContextValue = { user, loading, role, companyId, logout };
+  const value: AuthContextValue = { user, loading, role, companyId, subscription, logout };
   return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>;
 }
 

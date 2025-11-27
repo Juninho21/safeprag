@@ -2,6 +2,7 @@ import { createBrowserRouter, Navigate, Outlet } from 'react-router-dom';
 import { Layout } from '../components/Layout';
 import App from '../App';
 import { AdminPage } from '../components/AdminPage';
+import { SuperUserPage } from '../components/SuperUserPage';
 // import { SupabaseIntegration } from '../pages/Admin/SupabaseIntegration';
 import { Login } from "../components/Login";
 import { ReactNode } from 'react';
@@ -84,10 +85,18 @@ export const router = createBrowserRouter([
               {
                 path: 'backup',
                 element: <RequireRole allow={["admin"]}><AdminPage /></RequireRole>
+              },
+              {
+                path: 'assinaturas',
+                element: <RequireRole allow={["admin"]}><AdminPage /></RequireRole>
               }
             ]
           },
 
+          {
+            path: 'superuser',
+            element: <SuperUserPage />
+          }
         ]
       }
     ]

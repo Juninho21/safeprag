@@ -12,6 +12,7 @@ import { Modal } from './Modal';
 import { SuccessModal } from './SuccessModal';
 import DownloadsManagement from './ServiceOrders/DownloadsManagement';
 import AdminUsers from './AdminUsers';
+import { SubscriptionPlans } from './Billing/SubscriptionPlans';
 import { useLocation, useNavigate } from 'react-router-dom';
 import {
   getCompany,
@@ -189,6 +190,8 @@ export const AdminPage = () => {
       setActiveTab('usuarios');
     } else if (pathname.endsWith('/configuracoes/backup')) {
       setActiveTab('backup');
+    } else if (pathname.endsWith('/configuracoes/assinaturas')) {
+      setActiveTab('assinaturas');
     }
   }, [location.pathname]);
 
@@ -202,6 +205,8 @@ export const AdminPage = () => {
     else if (activeTab === 'clientes') path = '/configuracoes/clientes';
     else if (activeTab === 'usuarios') path = '/configuracoes/usuarios';
     else if (activeTab === 'backup') path = '/configuracoes/backup';
+    else if (activeTab === 'assinaturas') path = '/configuracoes/assinaturas';
+
 
     if (location.pathname !== path) {
       navigate(path, { replace: true });
@@ -579,6 +584,9 @@ export const AdminPage = () => {
           <AdminTabs activeTab={activeTab} onTabChange={setActiveTab} />
 
           <div className="mt-4 sm:mt-6">
+            {activeTab === 'assinaturas' && (
+              <SubscriptionPlans />
+            )}
             {activeTab === 'empresa' && (
               <div className="space-y-6">
                 {/* Dados da Empresa */}

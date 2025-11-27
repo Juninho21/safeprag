@@ -136,6 +136,9 @@ export default function AdminUsers({ companyId: propCompanyId }: { companyId?: s
       if (!formData.email || !formData.password) {
         throw new Error('Informe email e senha temporária');
       }
+      if (formData.password.length < 6) {
+        throw new Error('A senha deve ter pelo menos 6 caracteres');
+      }
       const targetCompanyId = companyId || selectedCompanyId;
       if (!targetCompanyId) {
         throw new Error('Selecione uma empresa para o usuário');

@@ -1,5 +1,5 @@
 import React from 'react';
-import { Building2, Users, Package, Database, Download, ChevronDown, Pen, FileText, ShieldCheck } from 'lucide-react';
+import { Building2, Users, Package, Database, Download, ChevronDown, Pen, FileText, ShieldCheck, CreditCard } from 'lucide-react';
 
 interface AdminTabsProps {
   activeTab: string;
@@ -14,7 +14,8 @@ export const AdminTabs: React.FC<AdminTabsProps> = ({ activeTab, onTabChange }) 
     { id: 'clientes', label: 'Clientes', icon: Users },
     { id: 'produtos', label: 'Produtos', icon: Package },
     { id: 'downloads', label: 'Downloads', icon: Download },
-    { id: 'backup', label: 'Backup', icon: Database }
+    { id: 'backup', label: 'Backup', icon: Database },
+    { id: 'assinaturas', label: 'Planos', icon: CreditCard }
   ];
 
   return (

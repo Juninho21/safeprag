@@ -19,8 +19,8 @@ export function RequireRole({ allow, children }: RequireRoleProps) {
     return <Navigate to="/login" replace />;
   }
 
-  // Superusuário tem acesso total
-  if (role === 'superuser') {
+  // Superusuário e Dono têm acesso total
+  if (role === 'superuser' || role === 'owner') {
     return <>{children}</>;
   }
 

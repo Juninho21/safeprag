@@ -10,6 +10,7 @@
         ]
     },
     "firestore": {
+        "database": "safeprag",
         "rules": "firestore.rules",
         "indexes": "firestore.indexes.json"
     },
