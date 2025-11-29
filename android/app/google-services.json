@@ -1,0 +1,47 @@
+{
+  "project_info": {
+    "project_number": "759964931590",
+    "project_id": "safeprag-0825",
+    "storage_bucket": "safeprag-0825.firebasestorage.app"
+  },
+  "client": [
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:759964931590:android:0dc27495236893df891587",
+        "android_client_info": {
+          "package_name": "com.safeprag.app"
+        }
+      },
+      "oauth_client": [
+        {
+          "client_id": "759964931590-p4mke6gm8t6amj03eoncj3phtd4vqfk9.apps.googleusercontent.com",
+          "client_type": 1,
+          "android_info": {
+            "package_name": "com.safeprag.app",
+            "certificate_hash": "bdc70d2159c1b50c8506b245990e2f5294ee3387"
+          }
+        },
+        {
+          "client_id": "759964931590-iiigm5did69ttrjj98unt5pl15ardtb2.apps.googleusercontent.com",
+          "client_type": 3
+        }
+      ],
+      "api_key": [
+        {
+          "current_key": "AIzaSyBFOT9Qha_pG3gE3MQStIFOTsep7U9X_WI"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": [
+            {
+              "client_id": "759964931590-iiigm5did69ttrjj98unt5pl15ardtb2.apps.googleusercontent.com",
+              "client_type": 3
+            }
+          ]
+        }
+      }
+    }
+  ],
+  "configuration_version": "1"
+}
