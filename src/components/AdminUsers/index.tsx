@@ -1,6 +1,7 @@
 import React, { useEffect, useState, useMemo } from 'react';
-import { listUsers, createUser, updateUserRole, deleteUser, AdminUser, listCompanies } from '../../services/adminApi';
-import { auth } from '../../config/firebase';
+import { AdminUser } from '../../services/adminApi';
+import { collection, query, where, getDocs, deleteDoc, doc, addDoc, updateDoc, serverTimestamp, onSnapshot } from 'firebase/firestore';
+import { auth, db } from '../../config/firebase';
 import { Modal } from '../Modal';
 import {
   X,
@@ -25,12 +26,13 @@ import type { Company } from '../../types/company.types';
 const ROLES: AdminUser['role'][] = ['admin', 'controlador', 'cliente'];
 
 export default function AdminUsers({ companyId: propCompanyId }: { companyId?: string }) {
-  const { user, companyId: authCompanyId } = useAuth();
-  // Hardcoded owner check to match backend
-  const isOwner = user?.email === 'juninhomarinho22@gmail.com';
+  const { user, companyId: authCompanyId, role } = useAuth();
 
-  // If owner, we don't enforce authCompanyId, allowing them to see all companies
-  const companyId = propCompanyId || (isOwner ? undefined : authCompanyId);
+  // Check for superuser role or specific email
+  const isSuperUser = role === 'superuser' || user?.email === 'juninhomarinho22@gmail.com';
+
+  // If superuser, we don't enforce authCompanyId, allowing them to see all companies
+  const companyId = propCompanyId || (isSuperUser ? undefined : authCompanyId);
 
   console.log('AdminUsers Render:', { propCompanyId, authCompanyId, companyId });
 
@@ -79,7 +81,23 @@ export default function AdminUsers({ companyId: propCompanyId }: { companyId?: s
     try {
       // Usa o filtro selecionado OU o companyId da prop/auth
       const targetId = listFilterCompanyId || companyId;
-      const data = await listUsers(100, targetId || undefined);
+
+      const usersRef = collection(db, 'users');
+      let q;
+
+      if (targetId) {
+        q = query(usersRef, where('companyId', '==', targetId));
+      } else {
+        // Se for superuser/owner vendo tudo
+        q = query(usersRef);
+      }
+
+      const querySnapshot = await getDocs(q);
+      const data: AdminUser[] = querySnapshot.docs.map(doc => ({
+        uid: doc.id,
+        ...doc.data()
+      } as AdminUser));
+
       setUsers(data);
     } catch (e: unknown) {
       if (e instanceof Error) {
@@ -107,8 +125,12 @@ export default function AdminUsers({ companyId: propCompanyId }: { companyId?: s
     async function loadCompanies() {
       if (!authCompanyId) {
         try {
-          const data = await listCompanies();
-          console.log('Empresas carregadas:', data);
+          // Busca direta no Firestore para garantir dados atualizados após restore
+          const companiesRef = collection(db, 'companies');
+          const snapshot = await getDocs(companiesRef);
+          const data = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() })) as Company[];
+
+          console.log('Empresas carregadas (Firestore):', data);
           setCompanies(data);
         } catch (e) {
           // eslint-disable-next-line no-undef
@@ -143,7 +165,41 @@ export default function AdminUsers({ companyId: propCompanyId }: { companyId?: s
       if (!targetCompanyId) {
         throw new Error('Selecione uma empresa para o usuário');
       }
-      await createUser({ ...formData, companyId: targetCompanyId });
+
+      // NO-API APPROACH: Write to 'user_invites' collection
+      const inviteRef = await addDoc(collection(db, 'user_invites'), {
+        email: formData.email,
+        password: formData.password,
+        displayName: formData.displayName,
+        role: formData.role,
+        companyId: targetCompanyId,
+        status: 'pending',
+        createdAt: serverTimestamp()
+      });
+
+      // Wait for result (optional, but good for UX)
+      // We can listen to the document for a few seconds
+      let unsubscribe: () => void;
+      await new Promise<void>((resolve, reject) => {
+        const timeout = setTimeout(() => {
+          if (unsubscribe) unsubscribe();
+          resolve(); // Assume success or background processing
+        }, 10000);
+
+        unsubscribe = onSnapshot(inviteRef, (snap) => {
+          const data = snap.data();
+          if (data?.status === 'completed') {
+            clearTimeout(timeout);
+            unsubscribe();
+            resolve();
+          } else if (data?.status === 'error') {
+            clearTimeout(timeout);
+            unsubscribe();
+            reject(new Error(data.error || 'Erro ao criar usuário'));
+          }
+        });
+      });
+
       setSuccess('Usuário criado com sucesso!');
       setIsCreateModalOpen(false);
       setFormData({ email: '', password: '', displayName: '', role: 'cliente' });
@@ -164,7 +220,11 @@ export default function AdminUsers({ companyId: propCompanyId }: { companyId?: s
     setLoading(true);
     setError(null);
     try {
-      await updateUserRole(selectedUser.uid, formData.role);
+      // NO-API APPROACH: Update Firestore directly. Trigger will sync Claims.
+      await updateDoc(doc(db, 'users', selectedUser.uid), {
+        role: formData.role
+      });
+
       setSuccess('Função atualizada com sucesso!');
       setIsEditModalOpen(false);
       setSelectedUser(null);
@@ -183,7 +243,9 @@ export default function AdminUsers({ companyId: propCompanyId }: { companyId?: s
     setLoading(true);
     setError(null);
     try {
-      await deleteUser(selectedUser.uid);
+      // Exclusão direta via Firebase (Firestore)
+      await deleteDoc(doc(db, 'users', selectedUser.uid));
+
       setSuccess('Usuário removido com sucesso!');
       setIsDeleteModalOpen(false);
       setSelectedUser(null);
@@ -272,7 +334,7 @@ export default function AdminUsers({ companyId: propCompanyId }: { companyId?: s
           </div>
 
           <div className="flex items-center gap-2 w-full sm:w-auto flex-wrap justify-end">
-            {(isOwner || !authCompanyId) && (
+            {(isSuperUser || !authCompanyId) && (
               <div className="flex items-center gap-2">
                 <Building2 className="w-4 h-4 text-gray-500" />
                 <select
@@ -403,7 +465,7 @@ export default function AdminUsers({ companyId: propCompanyId }: { companyId?: s
               <input type="password" style={{ display: 'none' }} />
 
               {/* Company Selection for Superusers */}
-              {(isOwner || !authCompanyId) && (
+              {(isSuperUser || !authCompanyId) && (
                 <div>
                   <label className="block text-sm font-medium text-gray-700 mb-1">Empresa</label>
                   <select

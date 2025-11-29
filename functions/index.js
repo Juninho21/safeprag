@@ -563,3 +563,94 @@ app.post('/mercadopago-webhook', async (req, res) => {
 });
 
 exports.api = functions.https.onRequest(app);
+
+// ============================================================================
+// FIRESTORE TRIGGERS (No-API Approach)
+// ============================================================================
+
+// 1. Criar usuário no Auth quando um documento é criado em 'user_invites'
+exports.onUserInviteCreated = functions.firestore
+    .document('user_invites/{docId}')
+    .onCreate(async (snap, context) => {
+        const data = snap.data();
+        const { email, password, displayName, role, companyId } = data;
+
+        try {
+            console.log(`[Trigger] Criando usuário para ${email}...`);
+
+            // Criar no Auth
+            const userRecord = await admin.auth().createUser({
+                email,
+                password,
+                displayName
+            });
+
+            // Definir Claims
+            await admin.auth().setCustomUserClaims(userRecord.uid, {
+                role: role || 'cliente',
+                companyId
+            });
+
+            // Criar documento oficial do usuário em 'users'
+            await db.collection('users').doc(userRecord.uid).set({
+                uid: userRecord.uid,
+                email: userRecord.email,
+                displayName: displayName || '',
+                role: role || 'cliente',
+                companyId,
+                active: true,
+                created_at: admin.firestore.FieldValue.serverTimestamp(),
+                updated_at: admin.firestore.FieldValue.serverTimestamp()
+            });
+
+            // Atualizar status do convite
+            await snap.ref.update({ status: 'completed', uid: userRecord.uid, error: null });
+            console.log(`[Trigger] Usuário ${userRecord.uid} criado com sucesso.`);
+
+        } catch (error) {
+            console.error('[Trigger] Erro ao criar usuário:', error);
+            await snap.ref.update({ status: 'error', error: error.message });
+        }
+    });
+
+// 2. Sincronizar Role do Firestore para o Auth (Claims)
+exports.onUserRoleUpdated = functions.firestore
+    .document('users/{userId}')
+    .onUpdate(async (change, context) => {
+        const newData = change.after.data();
+        const oldData = change.before.data();
+
+        if (newData.role !== oldData.role) {
+            console.log(`[Trigger] Role alterada para ${newData.role} no usuário ${context.params.userId}`);
+            try {
+                const user = await admin.auth().getUser(context.params.userId);
+                const currentClaims = user.customClaims || {};
+
+                await admin.auth().setCustomUserClaims(context.params.userId, {
+                    ...currentClaims,
+                    role: newData.role
+                });
+                console.log('[Trigger] Claims atualizados com sucesso.');
+            } catch (error) {
+                console.error('[Trigger] Erro ao atualizar claims:', error);
+            }
+        }
+    });
+
+// 3. Excluir do Auth quando deletado do Firestore
+exports.onUserDeleted = functions.firestore
+    .document('users/{userId}')
+    .onDelete(async (snap, context) => {
+        const userId = context.params.userId;
+        console.log(`[Trigger] Excluindo usuário ${userId} do Auth...`);
+        try {
+            await admin.auth().deleteUser(userId);
+            console.log('[Trigger] Usuário excluído do Auth com sucesso.');
+        } catch (error) {
+            if (error.code === 'auth/user-not-found') {
+                console.log('[Trigger] Usuário já não existia no Auth.');
+            } else {
+                console.error('[Trigger] Erro ao excluir do Auth:', error);
+            }
+        }
+    });

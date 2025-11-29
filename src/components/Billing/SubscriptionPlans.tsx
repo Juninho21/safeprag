@@ -1,4 +1,5 @@
 import React, { useState, useEffect } from 'react';
+import { useNavigate } from 'react-router-dom';
 import { Check, Loader2, Copy, AlertTriangle } from 'lucide-react';
 import { plansService, Plan } from '../../services/plansService';
 import { useAuth } from '../../contexts/AuthContext';
@@ -101,6 +102,7 @@ const PlanCard: React.FC<PlanProps> = ({ name, price, period, features, recommen
 
 export const SubscriptionPlans: React.FC = () => {
     const { user, subscription, role } = useAuth();
+    const navigate = useNavigate();
     const [plans, setPlans] = useState<Plan[]>([]);
     const [loading, setLoading] = useState(true);
     const [paymentData, setPaymentData] = useState<any>(null);
@@ -121,7 +123,11 @@ export const SubscriptionPlans: React.FC = () => {
 
                     if (statusData.status === 'approved') {
                         setPaymentData((prev: any) => ({ ...prev, status: 'approved' }));
-                        // Aqui você pode adicionar lógica extra, como atualizar o status do usuário no contexto
+
+                        // Redirecionar para a agenda após 2 segundos para o usuário ver a confirmação
+                        setTimeout(() => {
+                            navigate('/?tab=schedule');
+                        }, 2000);
                     }
                 } catch (error) {
                     console.error('Erro ao verificar status:', error);

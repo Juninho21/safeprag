@@ -54,6 +54,9 @@ service cloud.firestore {
     // ========================================
     
     match /users/{userId} {
+      // Superusuários e Dono podem fazer tudo (ler, criar, editar, excluir)
+      allow read, write: if isOwner() || request.auth.token.role == 'superuser';
+
       // O próprio usuário pode ler/escrever seus dados
       allow read, update, delete: if isAuthenticated() && request.auth.uid == userId;
       

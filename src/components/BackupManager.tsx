@@ -81,7 +81,7 @@ const BackupManager: React.FC<BackupManagerProps> = ({ onClose }) => {
     try {
       const backup = createBackup();
       exportBackupToFile(backup);
-      
+
       // Também salvar no Supabase
       const supabaseResult = await saveBackupToSupabase(backup);
       if (supabaseResult.success) {
@@ -116,7 +116,7 @@ const BackupManager: React.FC<BackupManagerProps> = ({ onClose }) => {
     try {
       // Import the backup file first to validate it
       const backup = await importBackupFromFile(localBackupFile, false); // Don't save to Supabase yet
-      
+
       // Now save it to Supabase
       const result = await saveBackupToSupabase(backup, localBackupFile.name);
       if (result.success) {
@@ -158,7 +158,7 @@ const BackupManager: React.FC<BackupManagerProps> = ({ onClose }) => {
       const backup = await importBackupFromFile(file, true); // Save to Supabase during import
       // Persist the uploaded backup JSON locally for future auto-restore
       saveBackupForAutoRestore(backup, file.name);
-      const result = restoreBackup(backup);
+      const result = await restoreBackup(backup);
 
       if (result.success) {
         setDataStats(getDataStats());
@@ -202,6 +202,8 @@ const BackupManager: React.FC<BackupManagerProps> = ({ onClose }) => {
     }
   };
 
+
+
   const formatFileSize = (bytes: number): string => {
     if (bytes === 0) return '0 Bytes';
     const k = 1024;
@@ -237,12 +239,11 @@ const BackupManager: React.FC<BackupManagerProps> = ({ onClose }) => {
 
           {/* Mensagem de status */}
           {message && (
-            <div className={`mb-4 p-3 rounded-lg ${
-              message.type === 'success' ? 'bg-green-100 text-green-800 border border-green-200' :
+            <div className={`mb-4 p-3 rounded-lg ${message.type === 'success' ? 'bg-green-100 text-green-800 border border-green-200' :
               message.type === 'error' ? 'bg-red-100 text-red-800 border border-red-200' :
-              message.type === 'warning' ? 'bg-yellow-100 text-yellow-800 border border-yellow-200' :
-              'bg-blue-100 text-blue-800 border border-blue-200'
-            }`}>
+                message.type === 'warning' ? 'bg-yellow-100 text-yellow-800 border border-yellow-200' :
+                  'bg-blue-100 text-blue-800 border border-blue-200'
+              }`}>
               {message.text}
             </div>
           )}
@@ -260,7 +261,7 @@ const BackupManager: React.FC<BackupManagerProps> = ({ onClose }) => {
                 <p className="text-xl font-bold text-blue-600">{formatFileSize(dataStats.totalSize)}</p>
               </div>
             </div>
-            
+
             {Object.keys(dataStats.itemsByType).length > 0 && (
               <div className="mt-4">
                 <p className="text-sm text-gray-600 mb-2">Distribuição por tipo:</p>
@@ -371,16 +372,16 @@ const BackupManager: React.FC<BackupManagerProps> = ({ onClose }) => {
                     className="block w-full text-sm text-gray-500 file:mr-4 file:py-2 file:px-4 file:rounded-lg file:border-0 file:text-sm file:font-medium file:bg-blue-50 file:text-blue-700 hover:file:bg-blue-100 disabled:opacity-50"
                   />
                 </label>
-                
+
                 {localBackupFile && (
                   <div className="p-3 bg-blue-50 rounded-lg">
                     <p className="text-sm text-gray-700">
-                      <span className="font-medium">Arquivo selecionado:</span> {localBackupFile.name} 
+                      <span className="font-medium">Arquivo selecionado:</span> {localBackupFile.name}
                       ({formatFileSize(localBackupFile.size)})
                     </p>
                   </div>
                 )}
-                
+
                 <button
                   onClick={handleSaveLocalBackupToSupabase}
                   disabled={isLoading || !localBackupFile}
@@ -463,8 +464,8 @@ const BackupManager: React.FC<BackupManagerProps> = ({ onClose }) => {
                             <button
                               onClick={async () => {
                                 setIsLoading(true);
-                            try {
-                              const result = await downloadBackupFromSupabase(backup.name);
+                                try {
+                                  const result = await downloadBackupFromSupabase(backup.name);
                                   if (result.success && result.backup) {
                                     // Salvar backup localmente (web: public/, Android: Filesystem)
                                     try {
@@ -478,16 +479,16 @@ const BackupManager: React.FC<BackupManagerProps> = ({ onClose }) => {
                                     }
                                     // Persist the downloaded backup for auto-restore as well
                                     saveBackupForAutoRestore(result.backup, backup.name);
-                                    const restoreResult = restoreBackup(result.backup);
+                                    const restoreResult = await restoreBackup(result.backup);
                                     if (restoreResult.success) {
                                       setDataStats(getDataStats());
-                                  showMessage('success', `Backup restaurado do Supabase! ${restoreResult.restored} itens.`);
-                                } else {
-                                  showMessage('error', `Falha na restauração: ${restoreResult.errors.join(', ')}`);
-                                }
-                              } else {
-                                showMessage('error', `Erro ao baixar backup: ${result.error}`);
-                              }
+                                      showMessage('success', `Backup restaurado do Supabase! ${restoreResult.restored} itens.`);
+                                    } else {
+                                      showMessage('error', `Falha na restauração: ${restoreResult.errors.join(', ')}`);
+                                    }
+                                  } else {
+                                    showMessage('error', `Erro ao baixar backup: ${result.error}`);
+                                  }
                                 } catch (error) {
                                   showMessage('error', `Erro: ${error instanceof Error ? error.message : 'Erro desconhecido'}`);
                                 } finally {
