@@ -1,6 +1,7 @@
 import { ReactNode } from 'react';
-import { Navigate, useLocation } from 'react-router-dom';
+import { useLocation, useNavigate } from 'react-router-dom';
 import { useAuth } from '../../contexts/AuthContext';
+import { CalendarX, ArrowRight } from 'lucide-react';
 
 interface RequireSubscriptionProps {
     children: ReactNode;
@@ -9,6 +10,7 @@ interface RequireSubscriptionProps {
 export function RequireSubscription({ children }: RequireSubscriptionProps) {
     const { subscription, loading, role } = useAuth();
     const location = useLocation();
+    const navigate = useNavigate();
 
     if (loading) {
         return <div className="flex items-center justify-center h-screen">Carregando...</div>;
@@ -40,35 +42,43 @@ export function RequireSubscription({ children }: RequireSubscriptionProps) {
     }
 
     if (isExpired) {
-        // Se for admin, permite acessar a página de assinaturas para renovar
-        if (role === 'admin') {
-            // Normaliza o path para comparação
-            const path = location.pathname.replace(/\/$/, '');
-
-            if (path === '/configuracoes/assinaturas') {
-                return children;
-            }
-            return <Navigate to="/configuracoes/assinaturas" replace />;
-        } else {
-            // Usuários não-admin são bloqueados
-            return (
-                <div className="flex flex-col items-center justify-center h-screen bg-gray-100 px-4">
-                    <div className="bg-white p-8 rounded-lg shadow-md max-w-md w-full text-center">
-                        <h1 className="text-2xl font-bold text-red-600 mb-4">Acesso Bloqueado</h1>
-                        <p className="text-gray-600 mb-6">
-                            O plano de assinatura da sua empresa expirou.
-                            Por favor, entre em contato com o administrador do sistema para regularizar o acesso.
-                        </p>
-                        <button
-                            onClick={() => window.location.reload()}
-                            className="px-4 py-2 bg-blue-600 text-white rounded hover:bg-blue-700 transition-colors"
-                        >
-                            Tentar Novamente
-                        </button>
-                    </div>
-                </div>
-            );
+        // Permite acesso à página de assinaturas para renovação (independente do role, o bloqueio de rota cuidará do resto se não for admin)
+        const path = location.pathname.replace(/\/$/, '');
+        if (path === '/configuracoes/assinaturas') {
+            return children;
         }
+
+        return (
+            <div className="min-h-screen bg-gray-50 flex flex-col items-center justify-center p-4">
+                <div className="max-w-md w-full bg-white rounded-2xl shadow-xl p-8 text-center">
+                    <div className="w-20 h-20 bg-red-50 rounded-full flex items-center justify-center mx-auto mb-6">
+                        <CalendarX className="w-10 h-10 text-red-500" />
+                    </div>
+
+                    <h1 className="text-2xl font-bold text-gray-900 mb-3">
+                        Assinatura Expirada
+                    </h1>
+
+                    <p className="text-gray-600 mb-8 leading-relaxed">
+                        Sua assinatura chegou ao fim. Para continuar aproveitando todos os recursos do sistema e gerenciando sua empresa, renove seu plano agora mesmo.
+                    </p>
+
+                    <button
+                        onClick={() => navigate('/configuracoes/assinaturas')}
+                        className="w-full bg-blue-600 hover:bg-blue-700 text-white font-semibold py-3.5 px-6 rounded-xl transition-all duration-200 shadow-lg shadow-blue-200 flex items-center justify-center gap-2 group"
+                    >
+                        Renovar Assinatura
+                        <ArrowRight className="w-5 h-5 group-hover:translate-x-1 transition-transform" />
+                    </button>
+
+                    {role !== 'admin' && (
+                        <p className="mt-6 text-sm text-gray-400 bg-gray-50 py-2 px-4 rounded-lg">
+                            Nota: Apenas administradores podem realizar a renovação.
+                        </p>
+                    )}
+                </div>
+            </div>
+        );
     }
 
     return children;

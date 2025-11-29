@@ -1,8 +1,8 @@
-import React from 'react';
+import React, { useState, useEffect } from 'react';
 import { Check, Loader2, Copy } from 'lucide-react';
 import { plansService, Plan } from '../../services/plansService';
 import { useAuth } from '../../contexts/AuthContext';
-import { useState, useEffect } from 'react';
+import { formatBrasiliaDate } from '../../utils/dateUtils';
 
 interface PlanProps {
     name: string;
@@ -192,7 +192,7 @@ export const SubscriptionPlans: React.FC = () => {
                     <div>
                         <p className="font-bold">Assinatura Ativa</p>
                         <p className="text-sm">
-                            Sua assinatura é válida até {subscription.endDate?.toDate ? subscription.endDate.toDate().toLocaleString('pt-BR', { day: '2-digit', month: '2-digit', year: 'numeric', hour: '2-digit', minute: '2-digit' }) : 'data desconhecida'}.
+                            Sua assinatura é válida até {subscription.endDate?.toDate ? formatBrasiliaDate(subscription.endDate.toDate()) : 'data desconhecida'}.
                         </p>
                     </div>
                 </div>
