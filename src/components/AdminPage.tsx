@@ -74,10 +74,20 @@ const emptyCompanyData: CompanyData = {
 };
 
 export const AdminPage = () => {
-  const [activeTab, setActiveTab] = useState('empresa');
   const location = useLocation();
   const navigate = useNavigate();
   const { companyId: authCompanyId } = useAuth();
+
+  const [activeTab, setActiveTab] = useState(() => {
+    const path = location.pathname;
+    if (path.includes('/produtos')) return 'produtos';
+    if (path.includes('/downloads')) return 'downloads';
+    if (path.includes('/clientes')) return 'clientes';
+    if (path.includes('/usuarios')) return 'usuarios';
+    if (path.includes('/backup')) return 'backup';
+    if (path.includes('/assinaturas')) return 'assinaturas';
+    return 'empresa';
+  });
 
   const [showSavedData, setShowSavedData] = useState(false);
   const [companyData, setCompanyData] = useState<CompanyData>(() => {
