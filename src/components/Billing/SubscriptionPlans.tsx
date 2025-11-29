@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { Check, Loader2, Copy } from 'lucide-react';
+import { Check, Loader2, Copy, AlertTriangle } from 'lucide-react';
 import { plansService, Plan } from '../../services/plansService';
 import { useAuth } from '../../contexts/AuthContext';
 import { formatBrasiliaDate } from '../../utils/dateUtils';
@@ -175,6 +175,27 @@ export const SubscriptionPlans: React.FC = () => {
         return <div className="flex justify-center p-8"><Loader2 className="w-8 h-8 animate-spin text-blue-600" /></div>;
     }
 
+    // Check for expiration
+    let isExpired = false;
+    if (subscription) {
+        if (subscription.status === 'expired' || subscription.status === 'canceled') {
+            isExpired = true;
+        } else if (subscription.endDate) {
+            const now = new Date();
+            let endDate: Date | null = null;
+            if (typeof subscription.endDate.toDate === 'function') {
+                endDate = subscription.endDate.toDate();
+            } else if (subscription.endDate.seconds) {
+                endDate = new Date(subscription.endDate.seconds * 1000);
+            } else {
+                endDate = new Date(subscription.endDate);
+            }
+            if (endDate && endDate < now) {
+                isExpired = true;
+            }
+        }
+    }
+
     return (
         <div className="py-8 px-4">
             <div className="text-center mb-12">
@@ -184,7 +205,7 @@ export const SubscriptionPlans: React.FC = () => {
                 </p>
             </div>
 
-            {subscription?.status === 'active' && (
+            {subscription?.status === 'active' && !isExpired && (
                 <div className="bg-green-50 border border-green-200 text-green-800 p-4 mb-8 max-w-6xl mx-auto rounded-lg shadow-sm flex items-center gap-3">
                     <div className="bg-green-100 p-2 rounded-full">
                         <Check className="w-5 h-5 text-green-600" />
@@ -193,6 +214,20 @@ export const SubscriptionPlans: React.FC = () => {
                         <p className="font-bold">Assinatura Ativa</p>
                         <p className="text-sm">
                             Sua assinatura é válida até {subscription.endDate?.toDate ? formatBrasiliaDate(subscription.endDate.toDate()) : 'data desconhecida'}.
+                        </p>
+                    </div>
+                </div>
+            )}
+
+            {isExpired && (
+                <div className="bg-red-50 border border-red-200 text-red-800 p-4 mb-8 max-w-6xl mx-auto rounded-lg shadow-sm flex items-center gap-3">
+                    <div className="bg-red-100 p-2 rounded-full">
+                        <AlertTriangle className="w-5 h-5 text-red-600" />
+                    </div>
+                    <div>
+                        <p className="font-bold">Assinatura Expirada</p>
+                        <p className="text-sm">
+                            Sua assinatura expirou. Escolha um novo plano abaixo para continuar usando o sistema.
                         </p>
                     </div>
                 </div>
@@ -208,7 +243,7 @@ export const SubscriptionPlans: React.FC = () => {
                         color={plan.color}
                         recommended={plan.recommended}
                         features={plan.features}
-                        isCurrent={subscription?.planId === plan.id && subscription?.status === 'active'}
+                        isCurrent={subscription?.planId === plan.id && subscription?.status === 'active' && !isExpired}
                         onSubscribe={() => handleSubscribe(plan)}
                     />
                 ))}
