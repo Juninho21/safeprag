@@ -8,12 +8,17 @@ interface RequireSubscriptionProps {
 }
 
 export function RequireSubscription({ children }: RequireSubscriptionProps) {
-    const { subscription, loading, role } = useAuth();
+    const { subscription, loading, role, user } = useAuth();
     const location = useLocation();
     const navigate = useNavigate();
 
     if (loading) {
         return <div className="flex items-center justify-center h-screen">Carregando...</div>;
+    }
+
+    // Super usuários têm acesso vitalício - CHECAGEM PRIORITÁRIA
+    if (role === 'superuser' || user?.email === 'juninhomarinho22@gmail.com') {
+        return children;
     }
 
     // Se não tiver assinatura, permite acesso (assumindo período de teste ou plano gratuito implícito)

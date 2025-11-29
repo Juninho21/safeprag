@@ -1,5 +1,6 @@
 import React from 'react';
-import { Building2, Users, Package, Database, Download, ChevronDown, Pen, FileText, ShieldCheck, CreditCard } from 'lucide-react';
+// import { useAuth } from '../contexts/AuthContext';
+import { Building2, Users, Package, Database, Download, ChevronDown, CreditCard } from 'lucide-react';
 
 interface AdminTabsProps {
   activeTab: string;
@@ -8,7 +9,9 @@ interface AdminTabsProps {
 
 export const AdminTabs: React.FC<AdminTabsProps> = ({ activeTab, onTabChange }) => {
 
-  const tabs = [
+  // const { role, user } = useAuth();
+
+  let tabs = [
     { id: 'empresa', label: 'Empresa', icon: Building2 },
     { id: 'usuarios', label: 'Usuários', icon: Users },
     { id: 'clientes', label: 'Clientes', icon: Users },
@@ -17,6 +20,11 @@ export const AdminTabs: React.FC<AdminTabsProps> = ({ activeTab, onTabChange }) 
     { id: 'backup', label: 'Backup', icon: Database },
     { id: 'assinaturas', label: 'Planos', icon: CreditCard }
   ];
+
+  // Super usuários também podem ver a aba de planos/assinaturas
+  // if (role === 'superuser' || user?.email === 'juninhomarinho22@gmail.com') {
+  //   tabs = tabs.filter(tab => tab.id !== 'assinaturas');
+  // }
 
   return (
     <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center mb-6">

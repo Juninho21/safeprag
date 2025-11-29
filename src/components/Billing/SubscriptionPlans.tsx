@@ -100,7 +100,7 @@ const PlanCard: React.FC<PlanProps> = ({ name, price, period, features, recommen
 };
 
 export const SubscriptionPlans: React.FC = () => {
-    const { user, subscription } = useAuth();
+    const { user, subscription, role } = useAuth();
     const [plans, setPlans] = useState<Plan[]>([]);
     const [loading, setLoading] = useState(true);
     const [paymentData, setPaymentData] = useState<any>(null);
@@ -196,6 +196,11 @@ export const SubscriptionPlans: React.FC = () => {
         }
     }
 
+    // Super usuários nunca expiram
+    if (role === 'superuser' || user?.email === 'juninhomarinho22@gmail.com') {
+        isExpired = false;
+    }
+
     return (
         <div className="py-8 px-4">
             <div className="text-center mb-12">
@@ -205,7 +210,21 @@ export const SubscriptionPlans: React.FC = () => {
                 </p>
             </div>
 
-            {subscription?.status === 'active' && !isExpired && (
+            {(role === 'superuser' || user?.email === 'juninhomarinho22@gmail.com') && (
+                <div className="bg-indigo-50 border border-indigo-200 text-indigo-800 p-4 mb-8 max-w-6xl mx-auto rounded-lg shadow-sm flex items-center gap-3">
+                    <div className="bg-indigo-100 p-2 rounded-full">
+                        <Check className="w-5 h-5 text-indigo-600" />
+                    </div>
+                    <div>
+                        <p className="font-bold">Acesso Vitalício</p>
+                        <p className="text-sm">
+                            Você possui acesso vitalício ao sistema como Super Usuário.
+                        </p>
+                    </div>
+                </div>
+            )}
+
+            {subscription?.status === 'active' && !isExpired && role !== 'superuser' && (
                 <div className="bg-green-50 border border-green-200 text-green-800 p-4 mb-8 max-w-6xl mx-auto rounded-lg shadow-sm flex items-center gap-3">
                     <div className="bg-green-100 p-2 rounded-full">
                         <Check className="w-5 h-5 text-green-600" />
@@ -233,6 +252,7 @@ export const SubscriptionPlans: React.FC = () => {
                 </div>
             )}
 
+            {/* Mostra os planos para todos, inclusive superusuários */}
             <div className="grid grid-cols-1 md:grid-cols-3 gap-8 max-w-6xl mx-auto items-center">
                 {plans.map((plan) => (
                     <PlanCard
