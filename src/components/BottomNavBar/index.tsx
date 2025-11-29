@@ -26,19 +26,19 @@ export function BottomNavBar({ activeTab, onTabChange, items }: BottomNavBarProp
         <div className="flex justify-around h-full items-center">
           {items.map((item) => {
             const isActive = activeTab === item.id;
-            const baseClasses = 'flex flex-col items-center justify-center px-4 py-2 rounded-md transition-all duration-200 cursor-pointer';
-            const activeClasses = 'bg-blue-50 shadow text-blue-600';
-            const inactiveClasses = 'text-gray-600 hover:text-blue-600 hover:bg-gray-100';
+            const baseClasses = 'flex flex-1 flex-col items-center justify-center px-1 py-1 rounded-md transition-all duration-200 cursor-pointer min-w-0';
+            const activeClasses = 'text-blue-600';
+            const inactiveClasses = 'text-gray-500 hover:text-blue-600 hover:bg-gray-50';
 
             return (
-              <div
+              <button
                 key={item.id}
                 onClick={() => handleClick(item.id)}
                 className={`${baseClasses} ${isActive ? activeClasses : inactiveClasses}`}
               >
-                {React.createElement(item.icon, { className: 'w-6 h-6 mb-1' })}
-                <span className="text-xs font-medium">{item.label}</span>
-              </div>
+                {React.createElement(item.icon, { className: `w-6 h-6 mb-0.5 ${isActive ? 'fill-current' : ''}` })}
+                <span className="text-[10px] sm:text-xs font-medium truncate w-full text-center leading-tight">{item.label}</span>
+              </button>
             );
           })}
         </div>
