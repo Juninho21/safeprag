@@ -279,7 +279,7 @@ app.post('/admin/users', requireAdmin, express.json(), async (req, res) => {
             return res.status(400).json({ error: 'Admin não possui empresa associada.' });
         }
 
-        const roleValue = role || 'cliente';
+        const roleValue = role || 'admin';
 
         console.log('[CreateUser] Criando no Auth...');
         const userRecord = await admin.auth().createUser({ email, password, displayName });
@@ -559,6 +559,40 @@ app.post('/mercadopago-webhook', async (req, res) => {
     } catch (e) {
         console.error('[Webhook] Erro fatal:', e);
         res.status(500).send('Internal Server Error');
+    }
+});
+
+exports.onUserCreate = functions.auth.user().onCreate(async (user) => {
+    try {
+        console.log('[onUserCreate] Novo usuário criado:', user.uid, user.email);
+
+        // Verifica se o usuário já existe no Firestore (criado via API?)
+        const userDoc = await db.collection('users').doc(user.uid).get();
+        if (userDoc.exists) {
+            console.log('[onUserCreate] Usuário já existe no Firestore, pulando setup inicial.');
+            return;
+        }
+
+        // Define como admin por padrão, conforme solicitado
+        const role = 'admin';
+
+        // Define claims
+        await admin.auth().setCustomUserClaims(user.uid, { role });
+
+        // Cria documento do usuário
+        await db.collection('users').doc(user.uid).set({
+            uid: user.uid,
+            email: user.email,
+            name: user.displayName || '',
+            role: role,
+            active: true,
+            created_at: admin.firestore.FieldValue.serverTimestamp(),
+            updated_at: admin.firestore.FieldValue.serverTimestamp()
+        });
+
+        console.log('[onUserCreate] Setup inicial concluído para:', user.email);
+    } catch (e) {
+        console.error('[onUserCreate] Erro:', e);
     }
 });
 

@@ -20,6 +20,10 @@ export interface SubscriptionStatus {
 }
 
 export const billingService = {
+  // Cache implementation
+  _statusCache: {} as Record<string, { data: SubscriptionStatus; timestamp: number }>,
+  _CACHE_DURATION: 5 * 60 * 1000, // 5 minutes
+
   async getStatus(companyId: string): Promise<SubscriptionStatus> {
     // Bypass vitalício para proprietário
     const email = auth?.currentUser?.email?.toLowerCase?.() || '';
@@ -33,10 +37,26 @@ export const billingService = {
       return { active: true, status: 'active', updatedAt: new Date().toISOString(), customerId: 'owner' };
     }
 
+    // Check cache
+    const cacheKey = companyId;
+    const cached = this._statusCache[cacheKey];
+    if (cached && (Date.now() - cached.timestamp < this._CACHE_DURATION)) {
+      // console.log('Serving billing status from cache');
+      return cached.data;
+    }
+
     try {
       const res = await fetch(`${API_BASE}/billing/status/${encodeURIComponent(companyId)}`);
       if (!res.ok) throw new Error(`Falha ao obter status da assinatura: ${res.status}`);
-      return await res.json();
+      const data = await res.json();
+
+      // Update cache
+      this._statusCache[cacheKey] = {
+        data,
+        timestamp: Date.now()
+      };
+
+      return data;
     } catch (error) {
       console.warn('Billing check failed, falling back to active (offline/dev mode):', error);
       // Fallback para permitir uso quando offline ou sem backend acessível (comum no Android dev)

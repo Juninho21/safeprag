@@ -1203,7 +1203,7 @@ function App() {
 
         // Usar o novo serviço de compartilhamento
         const success = await fileSharingService.shareFile({
-          filename: `ordem-servico-${serviceData.orderNumber}.pdf`,
+          filename: `OS_${serviceData.orderNumber}_${serviceData.client?.name ? serviceData.client.name.replace(/[^a-zA-Z0-9\s-]/g, '').trim() : 'Cliente'}_${formattedTime.replace(/:/g, '-').replace(/\//g, '-')}.pdf`,
           data: base64Data,
           mimeType: 'application/pdf'
         });

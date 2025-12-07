@@ -7,8 +7,8 @@ interface ImageUploadProps {
   className?: string;
 }
 
-export const ImageUpload: React.FC<ImageUploadProps> = ({ 
-  onFileSelect, 
+export const ImageUpload: React.FC<ImageUploadProps> = ({
+  onFileSelect,
   currentImageUrl,
   className = ''
 }) => {
@@ -32,18 +32,18 @@ export const ImageUpload: React.FC<ImageUploadProps> = ({
   const resizeImage = (file: File, maxWidth = 800, maxHeight = 600, quality = 0.7): Promise<File> => {
     return new Promise((resolve, reject) => {
       setIsResizing(true);
-      
+
       const reader = new FileReader();
       reader.readAsDataURL(file);
       reader.onload = (event) => {
         const img = new Image();
         img.src = event.target?.result as string;
-        
+
         img.onload = () => {
           // Verificar se a imagem precisa ser redimensionada
           let width = img.width;
           let height = img.height;
-          
+
           // Calcular novas dimensões mantendo a proporção
           if (width > maxWidth || height > maxHeight) {
             const ratio = Math.min(maxWidth / width, maxHeight / height);
@@ -57,22 +57,22 @@ export const ImageUpload: React.FC<ImageUploadProps> = ({
               return;
             }
           }
-          
+
           // Criar canvas para redimensionar
           const canvas = document.createElement('canvas');
           canvas.width = width;
           canvas.height = height;
-          
+
           const ctx = canvas.getContext('2d');
           if (!ctx) {
             setIsResizing(false);
             reject(new Error('Não foi possível criar o contexto do canvas'));
             return;
           }
-          
+
           // Desenhar imagem redimensionada
           ctx.drawImage(img, 0, 0, width, height);
-          
+
           // Converter para blob
           canvas.toBlob((blob) => {
             if (!blob) {
@@ -80,25 +80,25 @@ export const ImageUpload: React.FC<ImageUploadProps> = ({
               reject(new Error('Falha ao converter canvas para blob'));
               return;
             }
-            
+
             // Criar novo arquivo
             const resizedFile = new File([blob], file.name, {
               type: file.type,
               lastModified: Date.now()
             });
-            
+
             console.log(`🖼️ Imagem redimensionada: ${width}x${height}, ${(resizedFile.size / 1024).toFixed(2)}KB`);
             setIsResizing(false);
             resolve(resizedFile);
           }, file.type, quality);
         };
-        
+
         img.onerror = () => {
           setIsResizing(false);
           reject(new Error('Erro ao carregar a imagem'));
         };
       };
-      
+
       reader.onerror = () => {
         setIsResizing(false);
         reject(new Error('Erro ao ler o arquivo'));
@@ -117,7 +117,7 @@ export const ImageUpload: React.FC<ImageUploadProps> = ({
 
       try {
         let finalFile = file;
-        
+
         // Se o arquivo for maior que 5MB, redimensionar automaticamente
         if (file.size > 5 * 1024 * 1024) {
           console.log(`🖼️ Arquivo muito grande (${(file.size / 1024 / 1024).toFixed(2)}MB), redimensionando...`);
@@ -150,7 +150,7 @@ export const ImageUpload: React.FC<ImageUploadProps> = ({
 
   return (
     <div className={`relative border-2 border-dashed rounded-lg p-4 text-center cursor-pointer hover:border-blue-500 transition-colors ${className}`}
-         onClick={handleClick}>
+      onClick={handleClick}>
       {/*
         No Android WebView, inputs com display:none podem não abrir
         o seletor de arquivos via click(). Para melhor compatibilidade,
@@ -179,8 +179,14 @@ export const ImageUpload: React.FC<ImageUploadProps> = ({
             src={previewUrl}
             alt="Preview"
             className="max-h-32 mx-auto object-contain"
+            onError={(e) => {
+              console.error('Erro ao carregar imagem no preview:', previewUrl);
+              e.currentTarget.style.display = 'none'; // Oculta a imagem quebrada
+              // Opcional: Mostrar mensagem de erro ou resetar preview
+              // setPreviewUrl(''); 
+            }}
           />
-          <div 
+          <div
             className="absolute inset-0 flex items-center justify-center bg-black bg-opacity-40 opacity-0 group-hover:opacity-100 transition-opacity cursor-pointer"
             onClick={handleClick}
           >
@@ -188,7 +194,7 @@ export const ImageUpload: React.FC<ImageUploadProps> = ({
           </div>
         </div>
       ) : (
-        <div 
+        <div
           className="flex flex-col items-center justify-center py-4"
         >
           <span className="font-semibold text-gray-500 border border-dashed border-gray-300 rounded px-4 py-2">Logo da empresa</span>

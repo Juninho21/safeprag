@@ -17,7 +17,8 @@ import { useLocation, useNavigate } from 'react-router-dom';
 import {
   getCompany,
   saveCompany,
-  uploadCompanyLogo
+  uploadCompanyLogo,
+  linkUserToCompany
 } from '../services/companyService';
 import { useAuth } from '../contexts/AuthContext';
 
@@ -74,10 +75,21 @@ const emptyCompanyData: CompanyData = {
 };
 
 export const AdminPage = () => {
-  const [activeTab, setActiveTab] = useState('empresa');
   const location = useLocation();
   const navigate = useNavigate();
-  const { companyId: authCompanyId } = useAuth();
+  const { user, role, companyId: authCompanyId } = useAuth();
+
+  const [activeTab, setActiveTab] = useState(() => {
+    const pathname = location.pathname;
+    if (pathname.endsWith('/configuracoes/empresa')) return 'empresa';
+    if (pathname.endsWith('/configuracoes/produtos')) return 'produtos';
+    if (pathname.endsWith('/configuracoes/downloads')) return 'downloads';
+    if (pathname.endsWith('/configuracoes/clientes')) return 'clientes';
+    if (pathname.endsWith('/configuracoes/usuarios')) return 'usuarios';
+    if (pathname.endsWith('/configuracoes/backup')) return 'backup';
+    if (pathname.endsWith('/configuracoes/assinaturas')) return 'assinaturas';
+    return 'empresa';
+  });
 
   const [showSavedData, setShowSavedData] = useState(false);
   const [companyData, setCompanyData] = useState<CompanyData>(() => {
@@ -141,11 +153,12 @@ export const AdminPage = () => {
     setIsSuccessModalOpen(true);
   };
 
+  // useEffect para carregar dados do Firestore removido conforme solicitação.
+  // Os dados devem ser geridos apenas localmente/via backup nesta tela.
+  /*
   useEffect(() => {
     const loadCompanyData = async () => {
       try {
-        // Se o usuário já tem uma empresa vinculada, carrega ela
-        // Se não (admin/dono), tenta carregar a empresa que está sendo editada (se houver ID no estado)
         const targetId = authCompanyId || companyData.id;
 
         if (targetId) {
@@ -154,6 +167,7 @@ export const AdminPage = () => {
             setCompanyData({
               ...emptyCompanyData,
               ...remoteData,
+              logo_url: remoteData.logo_url || companyData.logo_url,
               environmental_license: {
                 ...emptyCompanyData.environmental_license,
                 ...(remoteData.environmental_license || {})
@@ -172,7 +186,8 @@ export const AdminPage = () => {
       }
     };
     loadCompanyData();
-  }, [authCompanyId]); // Removido companyData.id para evitar loop, carrega apenas na montagem ou mudança de authCompanyId
+  }, [authCompanyId]);
+  */
 
   useEffect(() => {
     const pathname = location.pathname;
@@ -253,7 +268,7 @@ export const AdminPage = () => {
     e.preventDefault();
 
     if (!companyData.name || !companyData.cnpj || !companyData.phone || !companyData.address || !companyData.email) {
-      // toast.error('Por favor, preencha todos os campos obrigatórios');
+      alert('Por favor, preencha todos os campos obrigatórios (Nome, CNPJ, Telefone, Email, Endereço)');
       console.error('Por favor, preencha todos os campos obrigatórios');
       return;
     }
@@ -271,6 +286,15 @@ export const AdminPage = () => {
         ...companyData
       });
 
+      // Se o usuário não tinha empresa vinculada e é owner/admin, vincula agora
+      if (!authCompanyId && user?.uid && (role === 'owner' || role === 'admin' || role === 'superuser')) {
+        await linkUserToCompany(user.uid, idToSave);
+        console.log('Usuário vinculado à nova empresa:', idToSave);
+      }
+
+      // Salvar no localStorage para persistência local
+      localStorage.setItem(STORAGE_KEYS.COMPANY, JSON.stringify({ ...companyData, id: idToSave }));
+
       // Atualiza o estado com o ID (caso seja novo)
       setCompanyData(prev => ({ ...prev, id: idToSave }));
 
@@ -279,7 +303,7 @@ export const AdminPage = () => {
       showSuccess('Dados da empresa salvos com sucesso!');
     } catch (error) {
       console.error('Erro ao salvar dados:', error);
-      // toast.error('Erro ao salvar dados da empresa');
+      alert('Erro ao salvar dados da empresa. Verifique o console para mais detalhes.');
       console.error('Erro ao salvar dados da empresa');
     }
   };
@@ -308,6 +332,15 @@ export const AdminPage = () => {
 
       // Atualiza o registro da empresa com a nova URL
       await saveCompany(targetId, { logo_url: logoUrl });
+
+      // Atualiza o localStorage para persistência local
+      const currentLocalData = localStorage.getItem(STORAGE_KEYS.COMPANY);
+      if (currentLocalData) {
+        const parsed = JSON.parse(currentLocalData);
+        localStorage.setItem(STORAGE_KEYS.COMPANY, JSON.stringify({ ...parsed, logo_url: logoUrl }));
+      } else {
+        localStorage.setItem(STORAGE_KEYS.COMPANY, JSON.stringify({ ...companyData, id: targetId, logo_url: logoUrl }));
+      }
 
       console.log('Logo da empresa atualizado com sucesso!');
       showSuccess('Logo da empresa atualizado com sucesso!');

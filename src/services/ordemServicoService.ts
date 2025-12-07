@@ -99,18 +99,9 @@ export async function createServiceOrder(schedule: Schedule, companyId: string):
   try {
     console.log('🔵 Criando nova ordem de serviço...', { schedule, companyId });
 
-    // Verificação de assinatura ativa antes de permitir criação de OS
-    try {
-      const { billingService } = await import('./billingService');
-      const status = await billingService.getStatus(companyId);
-      if (!status?.active) {
-        throw new Error('Assinatura inativa. Não é possível iniciar ordem de serviço.');
-      }
-    } catch (billingError: any) {
-      const msg = billingError?.message || 'Falha ao validar assinatura. Não é possível iniciar ordem de serviço.';
-      console.error('[Billing] Bloqueio na criação de OS:', msg);
-      throw new Error(msg);
-    }
+    // Verificação de assinatura removida para performance (validada na UI)
+    // O bloqueio é feito no ScheduleList via AuthContext
+    console.log('⚡ Criando OS (validação de assinatura delegada à UI)');
 
     // Verificar se já existe uma OS ativa para este agendamento
     const existingOrders = await getAllServiceOrders();

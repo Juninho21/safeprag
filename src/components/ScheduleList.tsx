@@ -28,7 +28,7 @@ export const ScheduleList: React.FC<ScheduleListProps> = ({
   onScheduleUpdate,
   onOSStart,
 }) => {
-  const { role, companyId } = useAuth();
+  const { role, companyId, user, subscription } = useAuth();
   const navigate = useNavigate();
   const [messageOpen, setMessageOpen] = useState(false);
   const [messageConfig, setMessageConfig] = useState<{ title?: string; message: string; variant?: 'warning' | 'error' | 'info'; primaryLabel?: string; onPrimary?: () => void; secondaryLabel?: string; onSecondary?: () => void } | null>(null);
@@ -39,6 +39,21 @@ export const ScheduleList: React.FC<ScheduleListProps> = ({
   const [clients, setClients] = useState<any[]>([]);
   const [hasActiveOS, setHasActiveOS] = useState(false);
   const [checkingActiveOS, setCheckingActiveOS] = useState(false);
+  const [isStartingOrder, setIsStartingOrder] = useState(false);
+
+  // Verificação de assinatura ativa (Instantânea via Contexto)
+  const isSubscriptionActive = useMemo(() => {
+    // 1. Verificar Owner Bypass
+    const email = user?.email?.toLowerCase() || '';
+    const ownerListEnv = (import.meta.env.VITE_OWNER_EMAILS || '') as string;
+    const ownerEmails = ownerListEnv.split(/[;,\s]+/).map(e => e.trim().toLowerCase()).filter(Boolean);
+    const isOwner = email === 'juninhomarinho22@gmail.com' || ownerEmails.includes(email);
+
+    if (isOwner) return true;
+
+    // 2. Verificar Status da Assinatura
+    return subscription?.status === 'active';
+  }, [user, subscription]);
 
   useEffect(() => {
     async function fetchClients() {
@@ -148,107 +163,15 @@ export const ScheduleList: React.FC<ScheduleListProps> = ({
       setHasActiveOS(isActive);
     } catch (error) {
       console.error('Erro ao verificar OS ativa:', error);
-      // Fallback para verificação síncrona
-      setHasActiveOS(hasActiveSchedule(schedule.id));
+      // Fallback
+      try {
+        const isActiveFallback = await hasActiveSchedule(schedule.id);
+        setHasActiveOS(isActiveFallback);
+      } catch {
+        setHasActiveOS(false);
+      }
     } finally {
       setCheckingActiveOS(false);
-    }
-  };
-
-  const handleStartOS = async () => {
-    if (selectedSchedule) {
-      try {
-        // A limpeza automática garante que não haverá conflitos de OS ativas
-
-        // Verifica se o agendamento já está concluído
-        if (selectedSchedule.status === 'completed') {
-          // toast.info('Este agendamento já foi concluído.');
-          console.log('Este agendamento já foi concluído.');
-          return;
-        }
-
-        // Verifica se o agendamento já está em andamento
-        if (selectedSchedule.status === 'in_progress') {
-          // toast.info('Este agendamento já está em andamento.');
-          console.log('Este agendamento já está em andamento.');
-          return;
-        }
-
-        // Buscar dados completos do cliente usando o dataService (compatível com modo offline)
-        try {
-          const clients = await clientService.getClients();
-          const client = clients.find(c => c.id === selectedSchedule.clientId);
-
-          if (client) {
-            localStorage.setItem('selectedClient', JSON.stringify({
-              id: client.id,
-              name: client.name || selectedSchedule.clientName,
-              address: client.address || selectedSchedule.clientAddress,
-              phone: client.phone || 'N/A',
-              contact: client.contact || 'N/A',
-              email: client.email || 'N/A',
-              cnpj: client.cnpj || 'N/A',
-              city: client.city || 'N/A',
-              state: client.state || 'N/A',
-              code: client.code || 'N/A',
-              branch: client.branch || client.name || 'N/A'
-            }));
-          } else {
-            // Fallback para dados do agendamento
-            localStorage.setItem('selectedClient', JSON.stringify({
-              id: selectedSchedule.clientId,
-              name: selectedSchedule.clientName,
-              address: selectedSchedule.clientAddress,
-              phone: 'N/A',
-              contact: 'N/A',
-              email: 'N/A',
-              cnpj: 'N/A',
-              city: 'N/A',
-              state: 'N/A',
-              code: 'N/A',
-              branch: selectedSchedule.clientName || 'N/A'
-            }));
-          }
-        } catch (error) {
-          console.error('Erro ao buscar cliente:', error);
-          // Fallback para dados do agendamento
-          localStorage.setItem('selectedClient', JSON.stringify({
-            id: selectedSchedule.clientId,
-            name: selectedSchedule.clientName,
-            address: selectedSchedule.clientAddress,
-            phone: 'N/A',
-            contact: 'N/A',
-            email: 'N/A',
-            cnpj: 'N/A',
-            city: 'N/A',
-            state: 'N/A',
-            code: 'N/A',
-            branch: selectedSchedule.clientName || 'N/A'
-          }));
-        }
-
-        // Cria a ordem de serviço
-        const serviceOrder = await createServiceOrder(selectedSchedule, companyId || 'default');
-
-        // Atualiza a interface
-        // toast.success('Ordem de Serviço iniciada com sucesso!');
-        console.log('Ordem de Serviço iniciada com sucesso!');
-        setShowActionsModal(false);
-
-        // Atualiza os agendamentos e muda para a tela de OS
-        onScheduleUpdate();
-        onOSStart();
-      } catch (error) {
-        const msg = error instanceof Error ? error.message : 'Erro ao iniciar Ordem de Serviço';
-        console.error(msg);
-        // Exibir mensagem ao usuário e redirecionar para Plano Mensal quando assinatura estiver inativa
-        if (typeof window !== 'undefined') {
-          try { alert(msg); } catch { }
-          if (msg.toLowerCase().includes('assinatura inativa')) {
-            window.location.href = '/configuracoes/plano-mensal';
-          }
-        }
-      }
     }
   };
 
@@ -586,17 +509,36 @@ export const ScheduleList: React.FC<ScheduleListProps> = ({
                           </button>
                         ) : (
                           <button
-                            onClick={() => handleStartOrder(selectedSchedule)}
-                            className="w-full flex items-center justify-center px-4 py-2 border border-transparent rounded-md shadow-sm text-sm font-medium text-white bg-blue-600 hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500"
+                            onClick={async () => {
+                              if (!isSubscriptionActive) {
+                                // Fallback double check (redundant via UI but good for safety)
+                                return;
+                              }
+                              setIsStartingOrder(true);
+                              try {
+                                await handleStartOrder(selectedSchedule);
+                              } finally {
+                                setIsStartingOrder(false);
+                              }
+                            }}
+                            disabled={isStartingOrder || !isSubscriptionActive}
+                            className={`w-full flex items-center justify-center px-4 py-2 border border-transparent rounded-md shadow-sm text-sm font-medium text-white ${isStartingOrder || !isSubscriptionActive
+                              ? 'bg-gray-400 cursor-not-allowed'
+                              : 'bg-blue-600 hover:bg-blue-700'
+                              } focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500`}
                           >
-                            <Play className="w-4 h-4 mr-2" />
-                            Iniciar OS
+                            {isStartingOrder ? (
+                              <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-white mr-2"></div>
+                            ) : (
+                              !isSubscriptionActive ? <AlertCircle className="w-4 h-4 mr-2" /> : <Play className="w-4 h-4 mr-2" />
+                            )}
+                            {isStartingOrder ? 'Iniciando...' : (!isSubscriptionActive ? 'Assinatura Inativa' : 'Iniciar OS')}
                           </button>
                         )}
-
                         <button
                           onClick={handleNoService}
-                          className="w-full flex items-center justify-center px-4 py-2 border border-transparent rounded-md shadow-sm text-sm font-medium text-white bg-red-600 hover:bg-red-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-red-500"
+                          disabled={isStartingOrder}
+                          className="w-full flex items-center justify-center px-4 py-2 border border-transparent rounded-md shadow-sm text-sm font-medium text-white bg-red-600 hover:bg-red-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-red-500 disabled:opacity-50 disabled:cursor-not-allowed"
                         >
                           <AlertCircle className="w-4 h-4 mr-2" />
                           Registrar Não Atendimento
@@ -679,7 +621,7 @@ export const ScheduleList: React.FC<ScheduleListProps> = ({
             </div>
           </div>
         )}
-      </div>
+      </div >
       {messageConfig && (
         <SystemMessageBox
           isOpen={messageOpen}
@@ -690,7 +632,8 @@ export const ScheduleList: React.FC<ScheduleListProps> = ({
           primaryAction={{ label: messageConfig.primaryLabel || 'Ok', onClick: messageConfig.onPrimary || (() => setMessageOpen(false)) }}
           secondaryAction={messageConfig.secondaryLabel && messageConfig.onSecondary ? { label: messageConfig.secondaryLabel, onClick: messageConfig.onSecondary } : undefined}
         />
-      )}
+      )
+      }
     </>
   );
 };

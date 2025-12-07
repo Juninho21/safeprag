@@ -7,6 +7,7 @@ import { getNextOSNumber } from './counterService';
 import { fileSharingService } from './fileSharingService';
 import { Capacitor } from '@capacitor/core';
 import { indexedDBService } from './indexedDBService';
+import { getCompany } from './companyService';
 
 interface CompanyData {
   name: string;
@@ -14,7 +15,7 @@ interface CompanyData {
   phone: string;
   address: string;
   email: string;
-  logoUrl?: string;
+  logo_url?: string;
   environmental_license?: {
     number: string;
     date: string;
@@ -23,19 +24,6 @@ interface CompanyData {
     number: string;
     expiry_date: string;
   };
-}
-
-interface PDFClient {
-  code: string;
-  name: string;
-  branch: string;
-  document: string;
-  cnpj: string;
-  city?: string;
-  address: string;
-  contact: string;
-  phone: string;
-  email: string;
 }
 
 const COMPANY_STORAGE_KEY = 'safeprag_company_data';
@@ -358,7 +346,7 @@ export const generateServiceOrderPDF = async (
     serviceData.orderNumber = osNumber.toString();
 
     // Buscar dados da empresa usando a função melhorada
-    const companyData = await getCompanyData();
+    const companyData = await getCompanyData(companyId);
 
     // Buscar dados da assinatura do cliente do localStorage
     const clientSignatureData = localStorage.getItem('client_signature_data');
@@ -590,6 +578,83 @@ export const generateServiceOrderPDF = async (
     `;
     document.head.appendChild(style);
 
+    // Função auxiliar para converter URL de imagem em Base64
+    const imageUrlToBase64 = async (url: string): Promise<string> => {
+      if (url.startsWith('data:')) {
+        console.log('✅ URL já é base64/data URI');
+        return url;
+      }
+
+      try {
+        const response = await fetch(url);
+        const blob = await response.blob();
+        return new Promise((resolve, reject) => {
+          const reader = new FileReader();
+          reader.onloadend = () => resolve(reader.result as string);
+          reader.onerror = reject;
+          reader.readAsDataURL(blob);
+        });
+      } catch (error) {
+        console.error('Erro ao converter imagem para base64:', error);
+
+        // Fallback: Tentar via proxy local (para contornar CORS em desenvolvimento)
+        try {
+          console.log('🔄 Tentando via proxy local...');
+          const proxyUrl = `http://localhost:4242/proxy-image?url=${encodeURIComponent(url)}`;
+          const response = await fetch(proxyUrl);
+          if (!response.ok) throw new Error('Proxy falhou');
+
+          const blob = await response.blob();
+          return new Promise((resolve, reject) => {
+            const reader = new FileReader();
+            reader.onloadend = () => {
+              console.log('✅ Imagem convertida via PROXY com sucesso');
+              resolve(reader.result as string);
+            };
+            reader.onerror = reject;
+            reader.readAsDataURL(blob);
+          });
+        } catch (proxyError) {
+          console.error('❌ Erro também no proxy:', proxyError);
+          return '';
+        }
+      }
+    };
+
+    // Tentar carregar logo do backup se não existir
+    if (!companyData?.logo_url) {
+      try {
+        console.log('📦 Tentando carregar dados do backup local (latest-backup.json)...');
+        const backupRes = await fetch('/latest-backup.json');
+        if (backupRes.ok) {
+          const backup = await backupRes.json();
+          // Tenta encontrar dados da empresa em chaves comuns
+          const backupCompany = backup?.data?.COMPANY || backup?.data?.safeprag_company_data;
+
+          if (backupCompany?.logo_url) {
+            console.log('✅ Logo encontrado no backup local');
+            if (!companyData) companyData = {} as CompanyData;
+            companyData.logo_url = backupCompany.logo_url;
+
+            // Preencher outros dados se faltarem
+            if (!companyData.name) companyData.name = backupCompany.name;
+            if (!companyData.cnpj) companyData.cnpj = backupCompany.cnpj;
+            if (!companyData.phone) companyData.phone = backupCompany.phone;
+            if (!companyData.email) companyData.email = backupCompany.email;
+            if (!companyData.address) companyData.address = backupCompany.address;
+          }
+        }
+      } catch (e) {
+        console.warn('⚠️ Falha ao ler latest-backup.json:', e);
+      }
+    }
+
+    // Converter logo para base64 se existir
+    let logoBase64 = '';
+    if (companyData?.logo_url) {
+      logoBase64 = await imageUrlToBase64(companyData.logo_url);
+    }
+
     // Cabeçalho principal
     const header = document.createElement('div');
     header.style.width = '100%';
@@ -601,7 +666,7 @@ export const generateServiceOrderPDF = async (
       <table style="width: 100%; border-collapse: collapse;">
         <tr>
           <td style="width: 33%; vertical-align: top; padding: 0;">
-            <img src="${companyData?.logo_url || ''}" alt="Logo" style="width: 200px; margin-top: 2px; margin-bottom: 5px;">
+            <img src="${logoBase64 || companyData?.logo_url || ''}" alt="Logo" style="width: 200px; margin-top: 2px; margin-bottom: 5px;">
           </td>
           <td style="width: 33%; text-align: center; vertical-align: middle;">
             <div style="font-size: 18px; font-weight: bold;">
@@ -1615,15 +1680,25 @@ export const generateAndShareServiceOrderPDF = async (
   shouldShare: boolean = true
 ): Promise<Blob> => {
   try {
+    // Obter companyId do storageService
+    const { storageService } = await import('./storageService');
+    const company = storageService.getCompany();
+    const companyId = company?.id?.toString?.() || company?.cnpj || 'default-company';
+
     // Gerar o PDF
-    const pdfBlob = await generateServiceOrderPDF(serviceData);
+    const pdfBlob = await generateServiceOrderPDF(serviceData, companyId);
 
     // Construir nome do arquivo com código do cliente
-    let filename = `ordem-servico-${serviceData.orderNumber}`;
-    if (serviceData.client?.code) {
-      const sanitizedClientCode = serviceData.client.code.replace(/[^a-zA-Z0-9\s]/g, '').replace(/\s+/g, '_');
-      filename = `OS_${serviceData.orderNumber}_${sanitizedClientCode}_${new Date().toLocaleDateString('pt-BR').replace(/\//g, '-')}`;
-    }
+    // Construir nome do arquivo com formato: OS_(numero)_(cliente)_(data)_(hora)
+    const sanitizedClientName = serviceData.client?.name
+      ? serviceData.client.name.replace(/[^a-zA-Z0-9\s-]/g, '').trim()
+      : 'Cliente';
+
+    const now = new Date();
+    const dateStr = now.toLocaleDateString('pt-BR').replace(/\//g, '-');
+    const timeStr = now.toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' }).replace(/:/g, '-');
+
+    const filename = `OS_${serviceData.orderNumber}_${sanitizedClientName}_${dateStr}_${timeStr}`;
 
     // Se estiver em plataforma nativa e shouldShare for true, perguntar se deseja compartilhar
     if (Capacitor.isNativePlatform() && shouldShare) {
@@ -1683,11 +1758,17 @@ export const sharePDFFromStorage = async (orderNumber: string): Promise<void> =>
     }
 
     // Construir nome do arquivo
-    let filename = `ordem-servico-${orderNumber}`;
-    if (pdfData.clientCode) {
-      const sanitizedClientCode = pdfData.clientCode.replace(/[^a-zA-Z0-9\s]/g, '').replace(/\s+/g, '_');
-      filename = `OS_${orderNumber}_${sanitizedClientCode}_${new Date().toLocaleDateString('pt-BR').replace(/\//g, '-')}`;
-    }
+    // Construir nome do arquivo
+    const sanitizedClientName = pdfData.clientName
+      ? pdfData.clientName.replace(/[^a-zA-Z0-9\s-]/g, '').trim()
+      : 'Cliente';
+
+    // Tenta usar a data de criação se disponível, senão usa agora
+    const dateObj = pdfData.createdAt ? new Date(pdfData.createdAt) : new Date();
+    const dateStr = dateObj.toLocaleDateString('pt-BR').replace(/\//g, '-');
+    const timeStr = dateObj.toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' }).replace(/:/g, '-');
+
+    const filename = `OS_${orderNumber}_${sanitizedClientName}_${dateStr}_${timeStr}`;
 
     if (Capacitor.isNativePlatform()) {
       const success = await fileSharingService.shareFile({
@@ -1731,9 +1812,19 @@ export const generateEditableServiceOrderPDF = async (
     console.error('[Billing] Bloqueio de geração de PDF (editável):', precheckError);
     throw precheckError;
   }
+
+  let companyId = 'default-company';
+  try {
+    const { storageService } = await import('./storageService');
+    const company = storageService.getCompany();
+    companyId = company?.id?.toString?.() || company?.cnpj || 'default-company';
+  } catch (e) {
+    console.warn('Erro ao obter companyId para PDF editável:', e);
+  }
+
   try {
     // Buscar dados da empresa
-    const companyData = await getCompanyData();
+    const companyData = await getCompanyData(companyId);
 
     // Criar novo documento PDF
     const pdfDoc = await PDFDocument.create();
@@ -1946,11 +2037,16 @@ export const generateEditableServiceOrderPDF = async (
     const pdfBytes = await pdfDoc.save();
 
     // Construir nome do arquivo
-    let filename = `ordem-servico-editavel-${serviceData.orderNumber}`;
-    if (serviceData.client?.code) {
-      const sanitizedClientCode = serviceData.client.code.replace(/[^a-zA-Z0-9\s]/g, '').replace(/\s+/g, '_');
-      filename = `OS_Editavel_${serviceData.orderNumber}_${sanitizedClientCode}_${new Date().toLocaleDateString('pt-BR').replace(/\//g, '-')}`;
-    }
+    // Construir nome do arquivo com formato: OS_Editavel_(numero)_(cliente)_(data)_(hora)
+    const sanitizedClientName = serviceData.client?.name
+      ? serviceData.client.name.replace(/[^a-zA-Z0-9\s-]/g, '').trim()
+      : 'Cliente';
+
+    const now = new Date();
+    const dateStr = now.toLocaleDateString('pt-BR').replace(/\//g, '-');
+    const timeStr = now.toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' }).replace(/:/g, '-');
+
+    const filename = `OS_Editavel_${serviceData.orderNumber}_${sanitizedClientName}_${dateStr}_${timeStr}`;
 
     // Download do PDF
     if (Capacitor.isNativePlatform()) {
@@ -1985,27 +2081,37 @@ export const generateEditableServiceOrderPDF = async (
   }
 };
 
-// Função para buscar dados da empresa APENAS do localStorage
-const getCompanyData = async (): Promise<CompanyData | null> => {
+// Função para buscar dados da empresa do Firestore ou localStorage
+const getCompanyData = async (companyId?: string): Promise<CompanyData | null> => {
   try {
-    console.log('📱 Carregando dados da empresa APENAS do localStorage');
+    // Se tiver ID, tenta buscar do Firestore primeiro
+    if (companyId) {
+      try {
+        console.log('📱 Buscando dados da empresa do Firestore:', companyId);
+        const firestoreData = await getCompany(companyId);
+        if (firestoreData) {
+          console.log('✅ Dados da empresa carregados do Firestore');
+          return firestoreData as CompanyData;
+        }
+      } catch (firestoreError) {
+        console.warn('⚠️ Falha ao buscar do Firestore, tentando localStorage:', firestoreError);
+      }
+    }
 
-    // Busca APENAS do localStorage
+    console.log('📱 Carregando dados da empresa do localStorage');
+
+    // Busca do localStorage como fallback
     const localData = localStorage.getItem(COMPANY_STORAGE_KEY);
     if (localData) {
       const parsedData = JSON.parse(localData);
-      // Não definir logo padrão - usar apenas dados do backup
       console.log('Dados da empresa carregados do localStorage:', parsedData);
       return parsedData;
     }
 
-    // Retorna null se não encontrar dados no arquivo JSON de backup
-    console.log('Nenhum dado da empresa encontrado no arquivo JSON de backup');
+    console.log('Nenhum dado da empresa encontrado');
     return null;
   } catch (error) {
-    console.error('Erro ao buscar dados da empresa do localStorage:', error);
-
-    // Retorna null em caso de erro
+    console.error('Erro ao buscar dados da empresa:', error);
     return null;
   }
 };

@@ -4,7 +4,7 @@
 
 const MAX_IMAGE_SIZE = 2 * 1024 * 1024; // 2MB
 const MAX_DIMENSIONS = 800; // 800x800px máximo
-const WEBP_QUALITY = 0.85; // 85% de qualidade
+const IMAGE_QUALITY = 0.9; // 90% de qualidade
 
 /**
  * Valida o tamanho do arquivo de imagem
@@ -25,12 +25,12 @@ export const validateImageSize = (file: File): void => {
  * @param file Arquivo de imagem original
  * @param maxSize Tamanho máximo em pixels (largura ou altura)
  * @param quality Qualidade de compressão (0.0 a 1.0)
- * @returns Blob da imagem otimizada em WebP
+ * @returns Blob da imagem otimizada em PNG
  */
 export const compressImage = async (
     file: File,
     maxSize: number = MAX_DIMENSIONS,
-    quality: number = WEBP_QUALITY
+    quality: number = IMAGE_QUALITY
 ): Promise<Blob> => {
     return new Promise((resolve, reject) => {
         const img = new Image();
@@ -61,12 +61,11 @@ export const compressImage = async (
             canvas.width = width;
             canvas.height = height;
 
-            // Desenhar imagem redimensionada
-            ctx.fillStyle = '#FFFFFF'; // Fundo branco para transparências
-            ctx.fillRect(0, 0, width, height);
+            // Desenhar imagem redimensionada (mantendo transparência)
+            ctx.clearRect(0, 0, width, height);
             ctx.drawImage(img, 0, 0, width, height);
 
-            // Converter para WebP
+            // Converter para PNG
             canvas.toBlob(
                 (blob) => {
                     if (blob) {
@@ -75,7 +74,7 @@ export const compressImage = async (
                         reject(new Error('Falha ao gerar imagem comprimida'));
                     }
                 },
-                'image/webp',
+                'image/png',
                 quality
             );
         };
@@ -97,20 +96,20 @@ export const blobToFile = (blob: Blob, fileName: string): File => {
 };
 
 /**
- * Otimiza uma imagem (valida, comprime e converte para WebP)
+ * Otimiza uma imagem (valida, comprime e converte para PNG)
  * @param file Arquivo de imagem original
- * @returns File otimizado em WebP
+ * @returns File otimizado em PNG
  */
 export const optimizeImage = async (file: File): Promise<File> => {
-    // Validar tamanho
-    validateImageSize(file);
+    // Validar tamanho (removido para permitir otimização de imagens maiores)
+    // validateImageSize(file);
 
-    // Comprimir e converter para WebP
+    // Comprimir e converter para PNG
     const compressedBlob = await compressImage(file);
 
-    // Criar novo nome de arquivo com extensão .webp
+    // Criar novo nome de arquivo com extensão .png
     const originalName = file.name.replace(/\.[^/.]+$/, '');
-    const optimizedFile = blobToFile(compressedBlob, `${originalName}.webp`);
+    const optimizedFile = blobToFile(compressedBlob, `${originalName}.png`);
 
     console.log(`✅ Imagem otimizada: ${file.size} bytes → ${optimizedFile.size} bytes (${Math.round((1 - optimizedFile.size / file.size) * 100)}% de redução)`);
 

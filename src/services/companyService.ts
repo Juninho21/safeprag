@@ -63,16 +63,16 @@ export const uploadCompanyLogo = async (companyId: string, file: File): Promise<
     // Importar dinamicamente o módulo de utilitários de imagem
     const { optimizeImage } = await import('../utils/imageUtils');
 
-    // Otimizar imagem (validar, comprimir e converter para WebP)
+    // Otimizar imagem (validar, comprimir e converter para PNG)
     const optimizedFile = await optimizeImage(file);
 
-    // Nome do arquivo sempre em WebP
-    const fileName = `company-logos/${companyId}.webp`;
+    // Nome do arquivo sempre em PNG
+    const fileName = `company-logos/${companyId}.png`;
     const storageRef = ref(storage, fileName);
 
     // Upload do arquivo otimizado
     await uploadBytes(storageRef, optimizedFile, {
-      contentType: 'image/webp',
+      contentType: 'image/png',
       cacheControl: 'public, max-age=31536000', // Cache de 1 ano
     });
 
@@ -183,6 +183,19 @@ export const uploadCompanyLogoToLocalStorage = async (file: File): Promise<strin
     return base64Logo;
   } catch (error) {
     console.error('Erro ao fazer upload do logo da empresa:', error);
+    throw error;
+  }
+};
+
+/**
+ * Vincula um usuário a uma empresa
+ */
+export const linkUserToCompany = async (userId: string, companyId: string): Promise<void> => {
+  try {
+    const userRef = doc(db, 'users', userId);
+    await setDoc(userRef, { companyId }, { merge: true });
+  } catch (error) {
+    console.error('Erro ao vincular usuário à empresa:', error);
     throw error;
   }
 };

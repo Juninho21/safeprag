@@ -227,8 +227,13 @@ const DownloadsManagement: React.FC = () => {
         console.log('📱 Modo Mobile: Usando compartilhamento');
         try {
           const { fileSharingService } = await import('../../services/fileSharingService');
+          const dateObj = pdfData.createdAt ? new Date(pdfData.createdAt) : new Date();
+          const dateStr = dateObj.toLocaleDateString('pt-BR').replace(/\//g, '-');
+          const timeStr = dateObj.toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' }).replace(/:/g, '-');
+          const sanitizedClientName = pdfData.clientName ? pdfData.clientName.replace(/[^a-zA-Z0-9\s-]/g, '').trim() : 'Cliente';
+
           const success = await fileSharingService.shareFile({
-            filename: `OS_${orderNumber}_${pdfData.clientName || 'Cliente'}.pdf`,
+            filename: `OS_${orderNumber}_${sanitizedClientName}_${dateStr}_${timeStr}.pdf`,
             data: pdfData.pdf,
             mimeType: 'application/pdf'
           });
@@ -262,7 +267,12 @@ const DownloadsManagement: React.FC = () => {
           // Cria link de download
           const url = URL.createObjectURL(blob);
           const link = document.createElement('a');
-          const fileName = `OS_${orderNumber}_${pdfData.clientName || 'Cliente'}.pdf`;
+          const dateObj = pdfData.createdAt ? new Date(pdfData.createdAt) : new Date();
+          const dateStr = dateObj.toLocaleDateString('pt-BR').replace(/\//g, '-');
+          const timeStr = dateObj.toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' }).replace(/:/g, '-');
+          const sanitizedClientName = pdfData.clientName ? pdfData.clientName.replace(/[^a-zA-Z0-9\s-]/g, '').trim() : 'Cliente';
+
+          const fileName = `OS_${orderNumber}_${sanitizedClientName}_${dateStr}_${timeStr}.pdf`;
 
           link.href = url;
           link.download = fileName;

@@ -34,4 +34,6 @@ export interface ServiceOrder {
   location?: string;
   observations?: string;
   applicationMethod?: string;
+  pestCounts?: any[];
+  devices?: any[];
 }

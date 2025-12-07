@@ -183,8 +183,7 @@ export const SubscriptionPlans: React.FC = () => {
                     Desbloqueie todo o potencial do Safeprag com nossos planos flexíveis.
                 </p>
             </div>
-
-            {subscription?.status === 'active' && (
+            {subscription?.status === 'active' && subscription?.endDate?.toDate() > new Date() && (
                 <div className="bg-green-50 border border-green-200 text-green-800 p-4 mb-8 max-w-6xl mx-auto rounded-lg shadow-sm flex items-center gap-3">
                     <div className="bg-green-100 p-2 rounded-full">
                         <Check className="w-5 h-5 text-green-600" />
@@ -192,7 +191,7 @@ export const SubscriptionPlans: React.FC = () => {
                     <div>
                         <p className="font-bold">Assinatura Ativa</p>
                         <p className="text-sm">
-                            Sua assinatura é válida até {subscription.endDate?.toDate ? subscription.endDate.toDate().toLocaleDateString() : 'data desconhecida'}.
+                            Sua assinatura é válida até {subscription.endDate?.toDate ? subscription.endDate.toDate().toLocaleString('pt-BR') : 'data desconhecida'}.
                         </p>
                     </div>
                 </div>
@@ -208,102 +207,106 @@ export const SubscriptionPlans: React.FC = () => {
                         color={plan.color}
                         recommended={plan.recommended}
                         features={plan.features}
-                        isCurrent={subscription?.planId === plan.id && subscription?.status === 'active'}
+                        isCurrent={subscription?.planId === plan.id && subscription?.status === 'active' && subscription?.endDate?.toDate() > new Date()}
                         onSubscribe={() => handleSubscribe(plan)}
                     />
                 ))}
             </div>
 
             {/* Payment Modal */}
-            {paymentData && (
-                <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
-                    <div className="bg-white rounded-2xl shadow-xl max-w-md w-full p-6 relative flex flex-col items-center">
+            {
+                paymentData && (
+                    <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
+                        <div className="bg-white rounded-2xl shadow-xl max-w-md w-full p-6 relative flex flex-col items-center">
 
-                        {/* Header with Plan Info */}
-                        <div className="w-full bg-green-50 rounded-lg p-4 mb-6 text-center">
-                            <h3 className="text-green-800 font-bold text-lg uppercase">{paymentData.description || 'Assinatura Safeprag'}</h3>
-                            <p className="text-green-600 font-semibold text-xl">R$ {paymentData.transaction_amount?.toFixed(2).replace('.', ',')}</p>
-                        </div>
-
-                        {/* Success Message if Approved */}
-                        {paymentData.status === 'approved' ? (
-                            <div className="flex flex-col items-center justify-center py-8">
-                                <div className="w-16 h-16 bg-green-100 rounded-full flex items-center justify-center mb-4">
-                                    <Check className="w-8 h-8 text-green-600" strokeWidth={3} />
-                                </div>
-                                <h3 className="text-xl font-bold text-gray-900 mb-2">Pagamento Confirmado!</h3>
-                                <p className="text-gray-600 text-center mb-6">Sua assinatura foi ativada com sucesso.</p>
-                                <button
-                                    onClick={() => setPaymentData(null)}
-                                    className="w-full py-3 bg-green-600 text-white rounded-lg font-bold hover:bg-green-700 transition-colors"
-                                >
-                                    Fechar e Atualizar
-                                </button>
+                            {/* Header with Plan Info */}
+                            <div className="w-full bg-green-50 rounded-lg p-4 mb-6 text-center">
+                                <h3 className="text-green-800 font-bold text-lg uppercase">{paymentData.description || 'Assinatura Safeprag'}</h3>
+                                <p className="text-green-600 font-semibold text-xl">R$ {paymentData.transaction_amount?.toFixed(2).replace('.', ',')}</p>
                             </div>
-                        ) : (
-                            <>
-                                {/* QR Code */}
-                                <div className="border border-gray-200 rounded-xl p-2 mb-6 shadow-sm">
-                                    {paymentData.point_of_interaction?.transaction_data?.qr_code_base64 ? (
-                                        <img
-                                            src={`data:image/png;base64,${paymentData.point_of_interaction.transaction_data.qr_code_base64}`}
-                                            alt="QR Code PIX"
-                                            className="w-48 h-48 object-contain"
-                                        />
-                                    ) : (
-                                        <div className="w-48 h-48 bg-gray-100 flex items-center justify-center text-gray-400">
-                                            QR Code Indisponível
-                                        </div>
-                                    )}
-                                </div>
 
-                                {/* Pix Copia e Cola */}
-                                <div className="w-full mb-6">
-                                    <label className="block text-center text-sm text-gray-600 mb-2">Pix Copia e Cola</label>
-                                    <div className="flex gap-2">
-                                        <input
-                                            type="text"
-                                            readOnly
-                                            value={paymentData.point_of_interaction?.transaction_data?.qr_code || ''}
-                                            className="flex-1 bg-white border border-gray-300 rounded-lg px-4 py-3 text-sm text-gray-600 font-mono focus:outline-none focus:ring-2 focus:ring-green-500"
-                                        />
-                                        <button
-                                            onClick={() => copyToClipboard(paymentData.point_of_interaction?.transaction_data?.qr_code)}
-                                            className="p-3 bg-white border border-gray-300 rounded-lg hover:bg-gray-50 text-gray-600 transition-colors"
-                                            title="Copiar código"
-                                        >
-                                            <Copy className="w-5 h-5" />
-                                        </button>
+                            {/* Success Message if Approved */}
+                            {paymentData.status === 'approved' ? (
+                                <div className="flex flex-col items-center justify-center py-8">
+                                    <div className="w-16 h-16 bg-green-100 rounded-full flex items-center justify-center mb-4">
+                                        <Check className="w-8 h-8 text-green-600" strokeWidth={3} />
                                     </div>
+                                    <h3 className="text-xl font-bold text-gray-900 mb-2">Pagamento Confirmado!</h3>
+                                    <p className="text-gray-600 text-center mb-6">Sua assinatura foi ativada com sucesso.</p>
+                                    <button
+                                        onClick={() => window.location.reload()}
+                                        className="w-full py-3 bg-green-600 text-white rounded-lg font-bold hover:bg-green-700 transition-colors"
+                                    >
+                                        Fechar e Atualizar
+                                    </button>
                                 </div>
+                            ) : (
+                                <>
+                                    {/* QR Code */}
+                                    <div className="border border-gray-200 rounded-xl p-2 mb-6 shadow-sm">
+                                        {paymentData.point_of_interaction?.transaction_data?.qr_code_base64 ? (
+                                            <img
+                                                src={`data:image/png;base64,${paymentData.point_of_interaction.transaction_data.qr_code_base64}`}
+                                                alt="QR Code PIX"
+                                                className="w-48 h-48 object-contain"
+                                            />
+                                        ) : (
+                                            <div className="w-48 h-48 bg-gray-100 flex items-center justify-center text-gray-400">
+                                                QR Code Indisponível
+                                            </div>
+                                        )}
+                                    </div>
 
-                                {/* Status */}
-                                <div className="flex items-center gap-2 mb-8">
-                                    <div className="w-2.5 h-2.5 bg-green-500 rounded-full animate-pulse"></div>
-                                    <span className="text-green-600 font-medium text-sm">Aguardando confirmação do pagamento...</span>
-                                </div>
+                                    {/* Pix Copia e Cola */}
+                                    <div className="w-full mb-6">
+                                        <label className="block text-center text-sm text-gray-600 mb-2">Pix Copia e Cola</label>
+                                        <div className="flex gap-2">
+                                            <input
+                                                type="text"
+                                                readOnly
+                                                value={paymentData.point_of_interaction?.transaction_data?.qr_code || ''}
+                                                className="flex-1 bg-white border border-gray-300 rounded-lg px-4 py-3 text-sm text-gray-600 font-mono focus:outline-none focus:ring-2 focus:ring-green-500"
+                                            />
+                                            <button
+                                                onClick={() => copyToClipboard(paymentData.point_of_interaction?.transaction_data?.qr_code)}
+                                                className="p-3 bg-white border border-gray-300 rounded-lg hover:bg-gray-50 text-gray-600 transition-colors"
+                                                title="Copiar código"
+                                            >
+                                                <Copy className="w-5 h-5" />
+                                            </button>
+                                        </div>
+                                    </div>
 
-                                {/* Back Button */}
-                                <button
-                                    onClick={() => setPaymentData(null)}
-                                    className="w-full py-3 bg-white border border-gray-300 rounded-lg text-gray-700 font-bold hover:bg-gray-50 transition-colors"
-                                >
-                                    Voltar
-                                </button>
-                            </>
-                        )}
+                                    {/* Status */}
+                                    <div className="flex items-center gap-2 mb-8">
+                                        <div className="w-2.5 h-2.5 bg-green-500 rounded-full animate-pulse"></div>
+                                        <span className="text-green-600 font-medium text-sm">Aguardando confirmação do pagamento...</span>
+                                    </div>
+
+                                    {/* Back Button */}
+                                    <button
+                                        onClick={() => setPaymentData(null)}
+                                        className="w-full py-3 bg-white border border-gray-300 rounded-lg text-gray-700 font-bold hover:bg-gray-50 transition-colors"
+                                    >
+                                        Voltar
+                                    </button>
+                                </>
+                            )}
+                        </div>
                     </div>
-                </div>
-            )}
+                )
+            }
 
-            {processing && (
-                <div className="fixed inset-0 bg-black bg-opacity-25 flex items-center justify-center z-50">
-                    <div className="bg-white p-4 rounded-lg shadow-lg flex items-center gap-3">
-                        <Loader2 className="w-6 h-6 animate-spin text-blue-600" />
-                        <span className="font-medium">Gerando pagamento...</span>
+            {
+                processing && (
+                    <div className="fixed inset-0 bg-black bg-opacity-25 flex items-center justify-center z-50">
+                        <div className="bg-white p-4 rounded-lg shadow-lg flex items-center gap-3">
+                            <Loader2 className="w-6 h-6 animate-spin text-blue-600" />
+                            <span className="font-medium">Gerando pagamento...</span>
+                        </div>
                     </div>
-                </div>
-            )}
-        </div>
+                )
+            }
+        </div >
     );
 };
