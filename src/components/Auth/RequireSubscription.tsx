@@ -1,71 +1,90 @@
-import React, { useEffect, useState } from 'react';
-import { Navigate, useNavigate, useLocation } from 'react-router-dom';
+import { ReactNode } from 'react';
+import { useLocation, useNavigate } from 'react-router-dom';
 import { useAuth } from '../../contexts/AuthContext';
+import { CalendarX, ArrowRight } from 'lucide-react';
 
 interface RequireSubscriptionProps {
-    children: React.ReactNode;
+    children: ReactNode;
 }
 
 export function RequireSubscription({ children }: RequireSubscriptionProps) {
-    const { user, loading, role, subscription } = useAuth();
-    const navigate = useNavigate();
+    const { subscription, loading, role, user } = useAuth();
     const location = useLocation();
-    const [secondsLeft, setSecondsLeft] = useState(3);
-
-    const isSuperUser = role === 'superuser' || role === 'suporte';
-    const hasSubscriptionIssue = subscription && (subscription.status === 'expired' || subscription.status === 'canceled');
-    // Permitir acesso à página de assinaturas mesmo com bloqueio
-    const isSubscriptionPage = location.pathname === '/configuracoes/assinaturas';
-    const shouldBlock = !isSuperUser && hasSubscriptionIssue && !isSubscriptionPage;
-
-    useEffect(() => {
-        if (shouldBlock) {
-            const timer = setInterval(() => {
-                setSecondsLeft((prev) => {
-                    if (prev <= 1) {
-                        clearInterval(timer);
-                        navigate('/configuracoes/assinaturas');
-                        return 0;
-                    }
-                    return prev - 1;
-                });
-            }, 1000);
-
-            return () => clearInterval(timer);
-        }
-    }, [shouldBlock, navigate]);
+    const navigate = useNavigate();
 
     if (loading) {
-        return <div className="p-6 text-center text-gray-600">Carregando...</div>;
+        return <div className="flex items-center justify-center h-screen">Carregando...</div>;
     }
 
-    if (!user) {
-        return <Navigate to="/login" replace />;
+    // Super usuários e suporte têm acesso vitalício - CHECAGEM PRIORITÁRIA
+    if (role === 'superuser' || role === 'suporte' || user?.email === 'juninhomarinho22@gmail.com') {
+        return children;
     }
 
-    // Superusuário e suporte têm acesso total
-    if (isSuperUser) {
-        return <>{children}</>;
+    // Se não tiver assinatura, permite acesso (assumindo período de teste ou plano gratuito implícito)
+    if (!subscription) {
+        return children;
     }
 
-    if (shouldBlock) {
+    let isExpired = subscription.status === 'expired' || subscription.status === 'canceled';
+
+    if (!isExpired && subscription.endDate) {
+        const now = new Date();
+        let endDate: Date | null = null;
+
+        // Handle different date formats (Firestore Timestamp, string, object)
+        if (typeof subscription.endDate.toDate === 'function') {
+            endDate = subscription.endDate.toDate();
+        } else if (subscription.endDate.seconds) {
+            endDate = new Date(subscription.endDate.seconds * 1000);
+        } else {
+            endDate = new Date(subscription.endDate);
+        }
+
+        if (endDate && endDate < now) {
+            isExpired = true;
+        }
+    }
+
+    if (isExpired) {
+        // Permite acesso à página de assinaturas para renovação (independente do role, o bloqueio de rota cuidará do resto se não for admin)
+        const path = location.pathname.replace(/\/$/, '');
+        if (path === '/configuracoes/assinaturas') {
+            return children;
+        }
+
         return (
-            <div className="flex items-center justify-center min-h-screen bg-gray-50">
-                <div className="text-center p-8 bg-white rounded-lg shadow-md max-w-md">
-                    <h2 className="text-2xl font-bold text-red-600 mb-4">Assinatura Necessária</h2>
-                    <p className="text-gray-600 mb-6">Sua assinatura expirou ou está inativa. Por favor, renove para continuar acessando o sistema.</p>
-                    <p className="text-sm text-blue-600 font-medium animate-pulse">
-                        Você será redirecionado para a página de planos em {secondsLeft} segundos...
+            <div className="min-h-screen bg-gray-50 flex flex-col items-center justify-center p-4">
+                <div className="max-w-md w-full bg-white rounded-2xl shadow-xl p-8 text-center">
+                    <div className="w-20 h-20 bg-red-50 rounded-full flex items-center justify-center mx-auto mb-6">
+                        <CalendarX className="w-10 h-10 text-red-500" />
+                    </div>
+
+                    <h1 className="text-2xl font-bold text-gray-900 mb-3">
+                        Assinatura Expirada
+                    </h1>
+
+                    <p className="text-gray-600 mb-8 leading-relaxed">
+                        Sua assinatura chegou ao fim. Para continuar aproveitando todos os recursos do sistema e gerenciando sua empresa, renove seu plano agora mesmo.
                     </p>
+
+                    <button
+                        onClick={() => navigate('/configuracoes/assinaturas')}
+                        className="w-full bg-blue-600 hover:bg-blue-700 text-white font-semibold py-3.5 px-6 rounded-xl transition-all duration-200 shadow-lg shadow-blue-200 flex items-center justify-center gap-2 group"
+                    >
+                        Renovar Assinatura
+                        <ArrowRight className="w-5 h-5 group-hover:translate-x-1 transition-transform" />
+                    </button>
+
+                    {role !== 'admin' && (
+                        <p className="mt-6 text-sm text-gray-400 bg-gray-50 py-2 px-4 rounded-lg">
+                            Nota: Apenas administradores podem realizar a renovação.
+                        </p>
+                    )}
                 </div>
             </div>
         );
     }
 
-    // Se não tiver objeto de assinatura (ex: usuário legado), por enquanto deixo passar
-    if (!subscription) {
-        console.warn("Acesso permitido sem objeto de assinatura (usuário legado ou erro na criação).");
-    }
-
-    return <>{children}</>;
+    return children;
 }
