@@ -15,7 +15,6 @@ import AdminUsers from './AdminUsers';
 import { SubscriptionPlans } from './Billing/SubscriptionPlans';
 import { useLocation, useNavigate } from 'react-router-dom';
 import {
-  getCompany,
   saveCompany,
   uploadCompanyLogo,
   linkUserToCompany
@@ -294,7 +293,6 @@ export const AdminPage = () => {
 
       // Salvar no localStorage para persistência local
       localStorage.setItem(STORAGE_KEYS.COMPANY, JSON.stringify({ ...companyData, id: idToSave }));
-
       // Atualiza o estado com o ID (caso seja novo)
       setCompanyData(prev => ({ ...prev, id: idToSave }));
 
@@ -341,7 +339,6 @@ export const AdminPage = () => {
       } else {
         localStorage.setItem(STORAGE_KEYS.COMPANY, JSON.stringify({ ...companyData, id: targetId, logo_url: logoUrl }));
       }
-
       console.log('Logo da empresa atualizado com sucesso!');
       showSuccess('Logo da empresa atualizado com sucesso!');
     } catch (error) {

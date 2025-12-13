@@ -4,7 +4,7 @@ import { ptBR } from 'date-fns/locale';
 import { Schedule } from '../types/schedule';
 import { Clock, MapPin, User, Pencil, Trash2, X, Play, AlertCircle, Phone, Building2, Mail } from 'lucide-react';
 // import { toast } from 'react-toastify';
-import { createServiceOrder, registerNoService, hasActiveSchedule, hasActiveScheduleAsync } from '../services/ordemServicoService';
+import { createServiceOrder, registerNoService, hasActiveSchedule, hasActiveScheduleAsync, getAllServiceOrders } from '../services/ordemServicoService';
 import { getClients } from '../services/clientStorage';
 import { useAuth } from '../contexts/AuthContext';
 import { useNavigate } from 'react-router-dom';
@@ -153,6 +153,33 @@ export const ScheduleList: React.FC<ScheduleListProps> = ({
   };
 
   const handleCardClick = async (schedule: Schedule) => {
+    // Se estiver em andamento, verifica e direciona para atividade
+    if (schedule.status === 'in_progress') {
+      try {
+        const allClients = getClients();
+        const fullClientData = allClients.find(c => c.id === schedule.clientId || c.id === schedule.client_id);
+        if (fullClientData) {
+          localStorage.setItem('selected_client', JSON.stringify(fullClientData));
+          localStorage.setItem('selectedClient', JSON.stringify(fullClientData));
+        }
+
+        // Recupera a OS ativa para este agendamento para restaurar o horário de início
+        const orders = await getAllServiceOrders();
+        const activeOrder = orders.find(o => o.scheduleId === schedule.id && o.status === 'in_progress');
+
+        if (activeOrder) {
+          console.log('Restaurando OS em andamento:', activeOrder.id);
+          // Define o horário de início com base na criação da OS ou startTime salvo
+          const startTime = activeOrder.createdAt || activeOrder.startTime || new Date().toISOString();
+          localStorage.setItem('serviceStartTime', startTime);
+        }
+      } catch (err) {
+        console.error('Erro ao preparar navegação para OS em andamento:', err);
+      }
+      onOSStart();
+      return;
+    }
+
     setSelectedSchedule(schedule);
     setShowActionsModal(true);
 
@@ -174,6 +201,7 @@ export const ScheduleList: React.FC<ScheduleListProps> = ({
       setCheckingActiveOS(false);
     }
   };
+
 
   const handleNoService = () => {
     setShowActionsModal(false);
@@ -496,17 +524,6 @@ export const ScheduleList: React.FC<ScheduleListProps> = ({
                             <Play className="w-4 h-4 mr-2" />
                             Verificando...
                           </button>
-                        ) : (hasActiveOS || selectedSchedule.status === 'in_progress') ? (
-                          <button
-                            onClick={() => {
-                              setShowActionsModal(false);
-                              onOSStart(); // Direciona para a página de atividade
-                            }}
-                            className="w-full flex items-center justify-center px-4 py-2 border border-transparent rounded-md shadow-sm text-sm font-medium text-white bg-green-600 hover:bg-green-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-green-500"
-                          >
-                            <Play className="w-4 h-4 mr-2" />
-                            Continuar
-                          </button>
                         ) : (
                           <button
                             onClick={async () => {
@@ -621,7 +638,7 @@ export const ScheduleList: React.FC<ScheduleListProps> = ({
             </div>
           </div>
         )}
-      </div >
+      </div>
       {messageConfig && (
         <SystemMessageBox
           isOpen={messageOpen}
@@ -632,8 +649,7 @@ export const ScheduleList: React.FC<ScheduleListProps> = ({
           primaryAction={{ label: messageConfig.primaryLabel || 'Ok', onClick: messageConfig.onPrimary || (() => setMessageOpen(false)) }}
           secondaryAction={messageConfig.secondaryLabel && messageConfig.onSecondary ? { label: messageConfig.secondaryLabel, onClick: messageConfig.onSecondary } : undefined}
         />
-      )
-      }
+      )}
     </>
   );
 };

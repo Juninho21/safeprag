@@ -1,15 +1,14 @@
 import React, { useState, useEffect, useCallback } from 'react';
 import { Calendar } from './Calendar';
 import { ScheduleList } from './ScheduleList';
-import { Schedule } from '../services/localStorageService';
+import { Schedule } from '../types/schedule';
 import { schedulingService } from '../services/schedulingService';
-import { Plus, X, RefreshCcw } from 'lucide-react';
+import { Plus } from 'lucide-react';
 // import { toast } from 'react-toastify';
 import { v4 as uuidv4 } from 'uuid';
 import { format } from 'date-fns';
-import { getClients } from '../services/clientStorage';
-import { Client } from '../types/client';
-import { STORAGE_KEYS } from '../services/storageKeys';
+import { getClients, Client } from '../services/clientStorage';
+
 import { useAuth } from '../contexts/AuthContext';
 import { useNavigate } from 'react-router-dom';
 import { SystemMessageBox } from './SystemMessageBox';
@@ -20,23 +19,9 @@ const SERVICE_TYPES = [
   'Avulso',
 ];
 
-const TECHNICIANS = [
-  'João Silva',
-  'Maria Santos',
-  'Pedro Oliveira',
-  'Ana Costa'
-];
 
-const DURATION_OPTIONS = [
-  '30 minutos',
-  '1 hora',
-  '1 hora e 30 minutos',
-  '2 horas',
-  '2 horas e 30 minutos',
-  '3 horas',
-  '3 horas e 30 minutos',
-  '4 horas'
-];
+
+
 
 const TIME_SLOTS = [
   '00:00',
@@ -94,24 +79,10 @@ interface ServiceSchedulerProps {
   onOSStart: () => void;
 }
 
-interface Client {
-  id: string;
-  code: string;
-  name: string;
-  branch: string;
-  address: string;
-  contact: string;
-  phone: string;
-  city: string;
-  state: string;
-  neighborhood: string;
-  zip_code: string;
-  email?: string;
-  cnpj?: string;
-}
 
-export const ServiceScheduler: React.FC<ServiceSchedulerProps> = ({ onTabChange, onOSStart }) => {
-  const { role, subscription } = useAuth();
+
+export const ServiceScheduler: React.FC<ServiceSchedulerProps> = ({ onOSStart }) => {
+  const { role, subscription, user } = useAuth();
   const navigate = useNavigate();
   const [clients, setClients] = useState<Client[]>([]);
   const [selectedClient, setSelectedClient] = useState<Client | null>(null);
@@ -132,6 +103,7 @@ export const ServiceScheduler: React.FC<ServiceSchedulerProps> = ({ onTabChange,
   const loadSchedules = useCallback(async () => {
     console.log('Carregando agendamentos...');
 
+
     try {
       // Carrega agendamentos usando o serviço do Supabase
       const allSchedules = await schedulingService.getSchedules();
@@ -141,10 +113,12 @@ export const ServiceScheduler: React.FC<ServiceSchedulerProps> = ({ onTabChange,
       const formattedDate = format(selectedDate, 'yyyy-MM-dd');
       console.log('Data formatada:', formattedDate);
 
+
       const dateSchedules = allSchedules.filter(
         (schedule: Schedule) => schedule.date === formattedDate
       );
       console.log('Agendamentos filtrados por data:', dateSchedules);
+
 
       const sortedSchedules = dateSchedules.sort((a: Schedule, b: Schedule) => {
         // Coloca os agendamentos concluídos por último
@@ -156,6 +130,7 @@ export const ServiceScheduler: React.FC<ServiceSchedulerProps> = ({ onTabChange,
 
       console.log('Agendamentos ordenados:', sortedSchedules);
       setSchedules(sortedSchedules);
+
 
     } catch (error) {
       console.error('Erro ao carregar agendamentos:', error);
@@ -194,6 +169,7 @@ export const ServiceScheduler: React.FC<ServiceSchedulerProps> = ({ onTabChange,
   useEffect(() => {
     console.log('Configurando event listeners');
 
+
     const handleVisibilityChange = () => {
       if (!document.hidden) {
         console.log('Tela visível, recarregando agendamentos...');
@@ -207,10 +183,12 @@ export const ServiceScheduler: React.FC<ServiceSchedulerProps> = ({ onTabChange,
       console.log('ServiceScheduler recebeu evento scheduleUpdate:', event.detail);
       const { scheduleId, status, schedule } = event.detail;
 
+
       // Atualiza o estado local se o agendamento estiver na lista atual
       setSchedules(prevSchedules => {
         console.log('Agendamentos atuais:', prevSchedules.map(s => ({ id: s.id, status: s.status })));
         console.log('Procurando agendamento com ID:', scheduleId);
+
 
         const scheduleIndex = prevSchedules.findIndex(s => s.id === scheduleId);
         if (scheduleIndex === -1) {
@@ -310,9 +288,41 @@ export const ServiceScheduler: React.FC<ServiceSchedulerProps> = ({ onTabChange,
     }
   };
 
+  const canManageSchedules = useCallback(() => {
+    // Debug log
+    console.log('[ServiceScheduler] Permission Check:', {
+      email: user?.email,
+      role,
+      subscriptionStatus: subscription?.status,
+      isPrivileged: role === 'owner' || role === 'superuser' || role === 'suporte',
+      isActiveSub: subscription?.status === 'active'
+    });
+
+    // Superusuários sempre podem
+    if (role === 'owner' || role === 'superuser' || role === 'suporte') {
+      return true;
+    }
+
+    // Outros precisam de assinatura ativa
+    return subscription?.status === 'active';
+  }, [role, subscription, user]);
+
   const handleEditSchedule = (scheduleToEdit: Schedule) => {
+    if (!canManageSchedules()) {
+      setMessageConfig({
+        title: 'Acesso Restrito',
+        message: 'Sua assinatura não está ativa. Não é possível editar agendamentos.',
+        variant: 'error',
+        primaryLabel: 'Ok',
+        onPrimary: () => setMessageOpen(false)
+      });
+      setMessageOpen(true);
+      return;
+    }
+
     // Carrega os dados do agendamento no formulário
     setSchedule(scheduleToEdit);
+
 
     // Encontra e seleciona o cliente
     const client = clients.find(c => c.id === scheduleToEdit.clientId);
@@ -320,11 +330,24 @@ export const ServiceScheduler: React.FC<ServiceSchedulerProps> = ({ onTabChange,
       setSelectedClient(client);
     }
 
+
     // Abre o modal
     setShowForm(true);
   };
 
   const handleDeleteSchedule = async (scheduleToDelete: Schedule) => {
+    if (!canManageSchedules()) {
+      setMessageConfig({
+        title: 'Acesso Restrito',
+        message: 'Sua assinatura não está ativa. Não é possível excluir agendamentos.',
+        variant: 'error',
+        primaryLabel: 'Ok',
+        onPrimary: () => setMessageOpen(false)
+      });
+      setMessageOpen(true);
+      return;
+    }
+
     if (window.confirm('Tem certeza que deseja excluir este agendamento?')) {
       try {
         // Excluir o agendamento usando o serviço
@@ -333,6 +356,7 @@ export const ServiceScheduler: React.FC<ServiceSchedulerProps> = ({ onTabChange,
         if (success) {
           // Recarrega a lista de agendamentos
           loadSchedules();
+
 
           // toast.success('Agendamento excluído com sucesso!');
           console.log('Agendamento excluído com sucesso!');
@@ -347,10 +371,7 @@ export const ServiceScheduler: React.FC<ServiceSchedulerProps> = ({ onTabChange,
   };
 
   const handleNewScheduleClick = () => {
-    const isSuperUser = role === 'owner' || role === 'superuser';
-    const hasActiveSubscription = subscription?.status === 'active';
-
-    if (isSuperUser || hasActiveSubscription) {
+    if (canManageSchedules()) {
       setSelectedClient(null);
       setSchedule({
         date: format(new Date(), 'yyyy-MM-dd'),
@@ -394,6 +415,7 @@ export const ServiceScheduler: React.FC<ServiceSchedulerProps> = ({ onTabChange,
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
 
+
     if (!selectedClient) {
       // toast.error('Por favor, selecione um cliente');
       console.error('Por favor, selecione um cliente');
@@ -422,14 +444,14 @@ export const ServiceScheduler: React.FC<ServiceSchedulerProps> = ({ onTabChange,
     // Se já existe um ID, é uma edição
     const isEditing = Boolean(schedule.id);
 
+
     const scheduleData: Schedule = {
       id: schedule.id || uuidv4(),
-      clientId: selectedClient.id,
+      clientId: selectedClient.id!,
       clientName: selectedClient.name,
       clientAddress: `${selectedClient.address}, ${selectedClient.city} - ${selectedClient.state}`,
       clientPhone: selectedClient.phone,
       date: schedule.date!,
-      time: schedule.startTime as string,
       startTime: schedule.startTime as string,
       endTime: schedule.endTime as string,
       serviceType: schedule.serviceType!,
@@ -449,8 +471,8 @@ export const ServiceScheduler: React.FC<ServiceSchedulerProps> = ({ onTabChange,
         }
 
         // Verifica se há sobreposição de horários
-        const newStart = schedule.startTime;
-        const newEnd = schedule.endTime;
+        const newStart = schedule.startTime!;
+        const newEnd = schedule.endTime!;
         const existingStart = existingSchedule.startTime;
         const existingEnd = existingSchedule.endTime || existingSchedule.startTime; // Fallback se não tiver end_time
 
@@ -463,13 +485,29 @@ export const ServiceScheduler: React.FC<ServiceSchedulerProps> = ({ onTabChange,
 
       if (hasConflict) {
         // toast.error('Já existe um agendamento neste horário');
+        // toast.error('Já existe um agendamento neste horário');
         console.error('Já existe um agendamento neste horário');
+
         return;
       }
     } catch (error) {
       console.error('Erro ao verificar conflitos:', error);
       // toast.error('Erro ao verificar conflitos de horário');
       console.error('Erro ao verificar conflitos de horário');
+      return;
+    }
+
+    // Verificação de segurança adicional usando a helper
+    if (!canManageSchedules()) {
+      console.error('Tentativa de criar/editar agendamento sem permissão');
+      setMessageConfig({
+        title: 'Acesso Negado',
+        message: 'Sua assinatura expirou ou você não tem permissão para realizar esta ação.',
+        variant: 'error',
+        primaryLabel: 'Ok',
+        onPrimary: () => setMessageOpen(false)
+      });
+      setMessageOpen(true);
       return;
     }
 
@@ -496,7 +534,6 @@ export const ServiceScheduler: React.FC<ServiceSchedulerProps> = ({ onTabChange,
     setShowForm(false);
     loadSchedules();
 
-    // toast.success(isEditing ? 'Agendamento atualizado com sucesso!' : 'Agendamento salvo com sucesso!');
     console.log(isEditing ? 'Agendamento atualizado com sucesso!' : 'Agendamento salvo com sucesso!');
   };
 
@@ -507,6 +544,7 @@ export const ServiceScheduler: React.FC<ServiceSchedulerProps> = ({ onTabChange,
         <div className="flex flex-wrap gap-3 mb-6">
           <button
             onClick={handleNewScheduleClick}
+
             className="min-w-[160px] bg-[#00A651] hover:bg-[#008c44] text-white font-semibold py-2.5 px-4 rounded-md flex items-center justify-center gap-2 transition-colors duration-200"
           >
             <Plus className="h-4 w-4" />
@@ -674,6 +712,7 @@ export const ServiceScheduler: React.FC<ServiceSchedulerProps> = ({ onTabChange,
         </div>
       )}
 
+
       {messageConfig && (
         <SystemMessageBox
           isOpen={messageOpen}
@@ -685,6 +724,7 @@ export const ServiceScheduler: React.FC<ServiceSchedulerProps> = ({ onTabChange,
           secondaryAction={messageConfig.secondaryLabel && messageConfig.onSecondary ? { label: messageConfig.secondaryLabel, onClick: messageConfig.onSecondary } : undefined}
         />
       )}
+
     </div>
   );
 };

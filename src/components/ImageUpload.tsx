@@ -32,18 +32,15 @@ export const ImageUpload: React.FC<ImageUploadProps> = ({
   const resizeImage = (file: File, maxWidth = 800, maxHeight = 600, quality = 0.7): Promise<File> => {
     return new Promise((resolve, reject) => {
       setIsResizing(true);
-
       const reader = new FileReader();
       reader.readAsDataURL(file);
       reader.onload = (event) => {
         const img = new Image();
         img.src = event.target?.result as string;
-
         img.onload = () => {
           // Verificar se a imagem precisa ser redimensionada
           let width = img.width;
           let height = img.height;
-
           // Calcular novas dimensões mantendo a proporção
           if (width > maxWidth || height > maxHeight) {
             const ratio = Math.min(maxWidth / width, maxHeight / height);
@@ -57,19 +54,16 @@ export const ImageUpload: React.FC<ImageUploadProps> = ({
               return;
             }
           }
-
           // Criar canvas para redimensionar
           const canvas = document.createElement('canvas');
           canvas.width = width;
           canvas.height = height;
-
           const ctx = canvas.getContext('2d');
           if (!ctx) {
             setIsResizing(false);
             reject(new Error('Não foi possível criar o contexto do canvas'));
             return;
           }
-
           // Desenhar imagem redimensionada
           ctx.drawImage(img, 0, 0, width, height);
 
@@ -80,25 +74,21 @@ export const ImageUpload: React.FC<ImageUploadProps> = ({
               reject(new Error('Falha ao converter canvas para blob'));
               return;
             }
-
             // Criar novo arquivo
             const resizedFile = new File([blob], file.name, {
               type: file.type,
               lastModified: Date.now()
             });
-
             console.log(`🖼️ Imagem redimensionada: ${width}x${height}, ${(resizedFile.size / 1024).toFixed(2)}KB`);
             setIsResizing(false);
             resolve(resizedFile);
           }, file.type, quality);
         };
-
         img.onerror = () => {
           setIsResizing(false);
           reject(new Error('Erro ao carregar a imagem'));
         };
       };
-
       reader.onerror = () => {
         setIsResizing(false);
         reject(new Error('Erro ao ler o arquivo'));
@@ -117,7 +107,6 @@ export const ImageUpload: React.FC<ImageUploadProps> = ({
 
       try {
         let finalFile = file;
-
         // Se o arquivo for maior que 5MB, redimensionar automaticamente
         if (file.size > 5 * 1024 * 1024) {
           console.log(`🖼️ Arquivo muito grande (${(file.size / 1024 / 1024).toFixed(2)}MB), redimensionando...`);

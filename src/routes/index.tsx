@@ -8,6 +8,7 @@ import { Login } from "../components/Login";
 import { ReactNode } from 'react';
 import { useAuth } from '../contexts/AuthContext';
 import { RequireRole } from '../components/Auth/RequireRole';
+import { RequireSubscription } from '../components/Auth/RequireSubscription';
 import DownloadsManagement from '../components/ServiceOrders/DownloadsManagement';
 
 // Componente para layout principal (sem autenticação)
@@ -38,7 +39,7 @@ export const router = createBrowserRouter([
     children: [
       {
         path: '/',
-        element: <RequireAuth><Layout /></RequireAuth>,
+        element: <RequireAuth><RequireSubscription><Layout /></RequireSubscription></RequireAuth>,
         children: [
           {
             index: true,

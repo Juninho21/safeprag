@@ -23,6 +23,7 @@ export interface ServiceOrderPDFData {
   companyLogo?: string;
 
   // Informações da ordem de serviço
+  clientCode?: string;
   orderNumber: string;
   date: string;
   startTime: string;

@@ -132,15 +132,17 @@ export async function createServiceOrder(schedule: Schedule, companyId: string):
       serviceType: 'Serviço de Controle de Pragas',
       date: schedule.date,
       startTime: formattedStartTime,
+      serviceStartTime: formattedStartTime,
       endTime: '',
       status: 'in_progress',
       createdAt: now.toISOString(),
       updatedAt: now.toISOString(),
       observations: '',
+      notes: '',
+      signatures: { client: '', technician: '' },
       devices: [],
       pestCounts: []
     };
-
     // Salva no localStorage
     existingOrders.push(newOrder);
     localStorage.setItem(STORAGE_KEYS.SERVICE_ORDERS, JSON.stringify(existingOrders));
@@ -185,11 +187,14 @@ export async function registerNoService(schedule: Schedule, reason: string): Pro
       serviceType: 'Não Atendimento',
       date: schedule.date,
       startTime: now.toLocaleTimeString('pt-BR'),
+      serviceStartTime: now.toLocaleTimeString('pt-BR'),
       endTime: now.toLocaleTimeString('pt-BR'),
       status: 'cancelled',
       createdAt: now.toISOString(),
       updatedAt: now.toISOString(),
       observations: `Não atendido. Motivo: ${reason}`,
+      notes: '',
+      signatures: { client: '', technician: '' },
       devices: [],
       pestCounts: []
     };
@@ -218,7 +223,7 @@ export async function registerNoService(schedule: Schedule, reason: string): Pro
 /**
  * Finaliza uma ordem de serviço
  */
-export async function finishServiceOrder(orderId: string): Promise<void> {
+export async function finishServiceOrder(orderId: string, additionalData?: Partial<ServiceOrder>): Promise<void> {
   try {
     console.log('🔵 Finalizando ordem de serviço:', orderId);
 
@@ -241,6 +246,7 @@ export async function finishServiceOrder(orderId: string): Promise<void> {
     const now = new Date();
     orders[orderIndex] = {
       ...order,
+      ...additionalData, // Apply additional data first (e.g. pdfUrl)
       status: 'completed',
       endTime: now.toLocaleTimeString('pt-BR'),
       updatedAt: now.toISOString()
@@ -271,12 +277,14 @@ export async function finishServiceOrder(orderId: string): Promise<void> {
     }
 
     // Gera e compartilha o PDF
+    /*
     try {
       const { generateAndShareServiceOrderPDF } = await import('./pdfService');
       // await generateAndShareServiceOrderPDF(order); // TODO: Implementar quando necessário
     } catch (error) {
       console.error('Erro ao gerar/compartilhar PDF:', error);
     }
+    */
 
     // Limpa dados temporários
     localStorage.removeItem('serviceStartTime');

@@ -1,7 +1,8 @@
 // Serviço de Backup/Restore Local para modo offline
 import { STORAGE_KEYS, ADDITIONAL_KEYS } from './storageKeys';
-import { ref, uploadBytes, getDownloadURL, listAll, deleteObject } from 'firebase/storage';
-import { storage } from '../config/firebase';
+import { ref, uploadBytes, getDownloadURL, listAll, deleteObject, getMetadata } from 'firebase/storage';
+import { doc, setDoc, writeBatch } from 'firebase/firestore';
+import { storage, db } from '../config/firebase';
 
 export interface BackupData {
   timestamp: string;
@@ -59,7 +60,7 @@ export const createBackup = (): BackupData => {
 /**
  * Restaura dados de um backup
  */
-export const restoreBackup = (backup: BackupData): { success: boolean; restored: number; errors: string[] } => {
+export const restoreBackup = async (backup: BackupData, skipSync: boolean = false): Promise<{ success: boolean; restored: number; errors: string[] }> => {
   console.log('📥 Restaurando backup dos dados locais...');
 
   let restored = 0;
@@ -87,6 +88,19 @@ export const restoreBackup = (backup: BackupData): { success: boolean; restored:
     console.log(`✅ Backup restaurado: ${restored} itens`);
     if (errors.length > 0) {
       console.warn(`⚠️ ${errors.length} erros durante a restauração`);
+    }
+
+    // Sincronizar com Firestore (apenas se não estiver pulando)
+    if (!skipSync) {
+      try {
+        // @ts-ignore - syncToFirestore está definido neste módulo, mas o TS reclama por ser const
+        await syncToFirestore(backup.data);
+        console.log('✅ Dados sincronizados com Firebase Firestore');
+      } catch (error) {
+        const errorMsg = `Erro ao sincronizar com Firebase: ${error instanceof Error ? error.message : 'Erro desconhecido'}`;
+        errors.push(errorMsg);
+        console.error(errorMsg);
+      }
     }
 
     return { success: true, restored, errors };
@@ -294,4 +308,180 @@ export const getDataStats = (): { totalItems: number; totalSize: number; itemsBy
   });
 
   return { totalItems, totalSize, itemsByType };
+
 };
+
+/**
+ * Sincroniza os dados restaurados com o Firestore
+ */
+export async function syncToFirestore(data: Record<string, any>) {
+  console.log('☁️ Iniciando sincronização com Firestore...');
+
+  // 1. Identificar a empresa
+  let companyId = null;
+  const companyKey = STORAGE_KEYS.COMPANY;
+
+  if (data[companyKey]) {
+    const companyData = typeof data[companyKey] === 'string'
+      ? JSON.parse(data[companyKey])
+      : data[companyKey];
+
+    if (companyData && companyData.id) {
+      companyId = companyData.id;
+      // Salvar dados da empresa
+      await setDoc(doc(db, 'companies', companyId), companyData, { merge: true });
+      console.log(`🏢 Empresa sincronizada: ${companyId}`);
+    }
+  }
+
+  if (!companyId) {
+    console.warn('⚠️ ID da empresa não encontrado no backup. Pulando sincronização de subcoleções.');
+    return;
+  }
+
+  // 2. Sincronizar subcoleções em lotes
+  const batch = writeBatch(db);
+  let batchCount = 0;
+  let totalSynced = 0;
+
+  const commitBatchIfNeeded = async () => {
+    if (batchCount >= 450) { // Limite de segurança do Firestore (max 500)
+      await batch.commit();
+      batchCount = 0;
+      console.log('📦 Lote intermediário enviado ao Firestore');
+    }
+  };
+
+  const processCollection = async (storageKey: string, collectionName: string) => {
+    if (data[storageKey]) {
+      const items = typeof data[storageKey] === 'string' ? JSON.parse(data[storageKey]) : data[storageKey];
+
+      if (Array.isArray(items)) {
+        for (const item of items) {
+          if (item.id) {
+            // Referência: companies/{companyId}/{collectionName}/{itemId}
+            const ref = doc(db, `companies/${companyId}/${collectionName}`, item.id);
+            batch.set(ref, item, { merge: true });
+            batchCount++;
+            totalSynced++;
+            await commitBatchIfNeeded();
+          }
+        }
+      }
+    }
+  };
+
+  // Mapeamento de chaves locais para coleções do Firestore
+  await processCollection(STORAGE_KEYS.CLIENTS, 'clients');
+  await processCollection(STORAGE_KEYS.PRODUCTS, 'products');
+  await processCollection(STORAGE_KEYS.SCHEDULES, 'schedules');
+  await processCollection(STORAGE_KEYS.SERVICE_ORDERS, 'service_orders');
+  await processCollection(STORAGE_KEYS.DEVICES, 'devices');
+  await processCollection(STORAGE_KEYS.USER_DATA, 'users'); // Atenção: verificar se USER_DATA é lista de usuários
+
+  // Commit final dos itens restantes
+  if (batchCount > 0) {
+    await batch.commit();
+  }
+
+  console.log(`✅ Sincronização concluída! ${totalSynced} itens enviados para a empresa ${companyId}.`);
+};
+
+/**
+ * Força a sincronização dos dados locais atuais para o Firestore
+ */
+export const forceSyncToFirestore = async (): Promise<void> => {
+  console.log('🔄 Forçando sincronização dos dados locais para o Firestore...');
+  const data: Record<string, any> = {};
+
+  // Coletar todos os dados do localStorage
+  const allKeys = [
+    ...Object.values(STORAGE_KEYS),
+    ...Object.values(ADDITIONAL_KEYS)
+  ];
+
+  for (const key of allKeys) {
+    const value = localStorage.getItem(key);
+    if (value) {
+      try {
+        data[key] = JSON.parse(value);
+      } catch {
+        data[key] = value;
+      }
+    }
+  }
+
+  await syncToFirestore(data);
+};
+
+// ============================================================================
+// Funções de Cloud Backup (Firebase Storage) - Substituindo Supabase
+// ============================================================================
+
+export const listFirebaseBackups = async (): Promise<{ success: boolean; files?: any[]; error?: string }> => {
+  try {
+    const listRef = ref(storage, 'backups/');
+    const res = await listAll(listRef);
+
+    const files = await Promise.all(res.items.map(async (itemRef) => {
+      try {
+        const metadata = await getMetadata(itemRef);
+        return {
+          name: itemRef.name,
+          created_at: metadata.timeCreated,
+          metadata: { size: metadata.size }
+        };
+      } catch (e) {
+        return { name: itemRef.name, created_at: new Date().toISOString(), metadata: { size: 0 } };
+      }
+    }));
+
+    // Ordenar por data (mais recente primeiro)
+    files.sort((a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime());
+
+    return { success: true, files };
+  } catch (error) {
+    return { success: false, error: error instanceof Error ? error.message : 'Erro desconhecido' };
+  }
+};
+
+export const downloadBackupFromFirebase = async (fileName: string): Promise<{ success: boolean; backup?: BackupData; error?: string }> => {
+  try {
+    const fileRef = ref(storage, `backups/${fileName}`);
+    const url = await getDownloadURL(fileRef);
+    const response = await fetch(url);
+    const backup = await response.json();
+    return { success: true, backup };
+  } catch (error) {
+    return { success: false, error: error instanceof Error ? error.message : 'Erro desconhecido' };
+  }
+};
+
+export const deleteBackupFromFirebase = async (fileName: string): Promise<{ success: boolean; error?: string }> => {
+  try {
+    const fileRef = ref(storage, `backups/${fileName}`);
+    await deleteObject(fileRef);
+    return { success: true };
+  } catch (error) {
+    return { success: false, error: error instanceof Error ? error.message : 'Erro desconhecido' };
+  }
+};
+
+export const testFirebaseStorageConnection = async (): Promise<{ success: boolean; buckets?: any[]; error?: string }> => {
+  try {
+    // Tenta listar para testar permissão
+    const listRef = ref(storage, 'backups/');
+    await listAll(listRef);
+    return { success: true, buckets: [{ name: 'default-bucket' }] };
+  } catch (error) {
+    return { success: false, error: error instanceof Error ? error.message : 'Erro desconhecido' };
+  }
+};
+
+// Alias para manter compatibilidade com o componente que espera nomes "Supabase"
+export const saveBackupToSupabase = saveBackupToFirebase;
+export const listSupabaseBackups = listFirebaseBackups;
+export const downloadBackupFromSupabase = downloadBackupFromFirebase;
+export const deleteBackupFromSupabase = deleteBackupFromFirebase;
+export const testSupabaseStorageConnection = testFirebaseStorageConnection;
+

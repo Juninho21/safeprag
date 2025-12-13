@@ -21,13 +21,13 @@ class FileSharingService {
     try {
       // Inicializar IndexedDB se necessário
       await indexedDBService.initDB();
-      
+
       // Buscar PDF do IndexedDB
       const pdfData = await indexedDBService.getPDF(orderNumber);
       return pdfData ? pdfData.pdf : null;
     } catch (error) {
       console.error('Erro ao obter PDF do IndexedDB:', error);
-      
+
       // Fallback para localStorage (para compatibilidade durante transição)
       try {
         const storedPDFs = JSON.parse(localStorage.getItem('safeprag_service_order_pdfs') || '{}');
@@ -46,40 +46,40 @@ class FileSharingService {
   private async saveFileTemporarily(filename: string, data: string): Promise<string | null> {
     try {
       console.log('Salvando arquivo temporariamente:', filename);
-      
+
       // Limpar nome do arquivo
-      const cleanFilename = filename.replace(/[^a-zA-Z0-9.-]/g, '_');
-      
+      const cleanFilename = filename.replace(/[<>:"/\\|?*]/g, '');
+
       // Tentar salvar em diferentes diretórios
       const directories = [
         Directory.Cache,
         Directory.Documents,
         Directory.Data
       ];
-      
+
       for (const directory of directories) {
         try {
           console.log(`Tentando salvar em ${directory}...`);
-          
+
           const result = await Filesystem.writeFile({
             path: cleanFilename,
             data: data,
             directory: directory,
             recursive: true
           });
-          
+
           console.log(`Arquivo salvo com sucesso em ${directory}:`, result.uri);
           return result.uri;
-          
+
         } catch (dirError) {
           console.log(`Erro ao salvar em ${directory}:`, dirError);
           continue;
         }
       }
-      
+
       console.error('Falha ao salvar arquivo em todos os diretórios');
       return null;
-      
+
     } catch (error) {
       console.error('Erro ao salvar arquivo temporariamente:', error);
       return null;
@@ -93,11 +93,14 @@ class FileSharingService {
     try {
       console.log('Iniciando compartilhamento de arquivo:', options.filename);
       console.log('Plataforma:', Capacitor.getPlatform());
-      
-      // Limpar o nome do arquivo para evitar caracteres inválidos
-      const cleanFilename = options.filename.replace(/[^a-zA-Z0-9.-]/g, '_');
+
+      // Limpar o nome do arquivo, mas manter a estrutura
+      let cleanFilename = options.filename;
+      // Remove apenas caracteres que são estritamente proibidos em sistemas de arquivos, mas mantem espaços e hifens
+      cleanFilename = cleanFilename.replace(/[<>:"/\\|?*]/g, '');
+
       console.log('Nome do arquivo limpo:', cleanFilename);
-      
+
       // Se temos orderNumber, busca do IndexedDB
       let pdfData = options.data;
       if (options.orderNumber && !pdfData) {
@@ -131,10 +134,10 @@ class FileSharingService {
       }
 
       console.log('Executando no Android, salvando arquivo temporariamente...');
-      
+
       // Salvar arquivo temporariamente
       const fileUri = await this.saveFileTemporarily(cleanFilename, pdfData);
-      
+
       if (!fileUri) {
         console.error('Falha ao salvar arquivo temporariamente');
         await this.showToast('Erro ao preparar arquivo para compartilhamento');
@@ -142,40 +145,40 @@ class FileSharingService {
       }
 
       console.log('Arquivo salvo temporariamente:', fileUri);
-      
+
       // Tentar compartilhamento usando o URI do arquivo
       try {
         console.log('Tentando compartilhamento com URI do arquivo...');
-        
+
         await Share.share({
           title: cleanFilename,
           text: `Compartilhando ${cleanFilename}`,
           url: fileUri,
           dialogTitle: 'Compartilhar arquivo'
         });
-        
+
         console.log('Compartilhamento via Capacitor Share concluído');
         return true;
-        
+
       } catch (shareError) {
         console.error('Erro no Capacitor Share com URI:', shareError);
-        
+
         // Se falhar com URI, tentar com data URL como fallback
         console.log('Tentando compartilhamento com data URL como fallback...');
-        
+
         try {
           const dataUrl = `data:${options.mimeType || 'application/pdf'};base64,${pdfData}`;
-          
+
           await Share.share({
             title: cleanFilename,
             text: `Compartilhando ${cleanFilename}`,
             url: dataUrl,
             dialogTitle: 'Compartilhar arquivo'
           });
-          
+
           console.log('Compartilhamento com data URL concluído');
           return true;
-          
+
         } catch (dataUrlError) {
           console.error('Erro no compartilhamento com data URL:', dataUrlError);
           await this.showToast('Erro ao compartilhar arquivo: ' + dataUrlError);
@@ -185,13 +188,13 @@ class FileSharingService {
 
     } catch (error) {
       console.error('Erro detalhado ao compartilhar arquivo:', error);
-      
+
       // Log mais específico do erro
       if (error instanceof Error) {
         console.error('Mensagem de erro:', error.message);
         console.error('Stack trace:', error.stack);
       }
-      
+
       // Se tudo falhar, mostrar erro
       let errorMessage = 'Erro ao compartilhar arquivo';
       if (error instanceof Error) {
@@ -201,7 +204,7 @@ class FileSharingService {
           errorMessage = 'Erro ao compartilhar arquivo: ' + error.message;
         }
       }
-      
+
       await this.showToast(errorMessage);
       return false;
     }
@@ -213,16 +216,16 @@ class FileSharingService {
   async shareServiceOrderPDF(orderNumber: string): Promise<boolean> {
     try {
       console.log('Compartilhando ordem de serviço:', orderNumber);
-      
+
       // Buscar dados do PDF do armazenamento
       const pdfData = await this.getPDFFromStorage(orderNumber);
       if (!pdfData) {
         throw new Error('PDF não encontrado no armazenamento');
       }
-      
+
       // Construir nome do arquivo
       const filename = `ordem-servico-${orderNumber}.pdf`;
-      
+
       // Compartilhar o arquivo
       return await this.shareFile({
         filename,
@@ -242,14 +245,14 @@ class FileSharingService {
   private async downloadFileWeb(options: { filename: string; data: string; mimeType: string }): Promise<void> {
     const blob = this.base64ToBlob(options.data, options.mimeType);
     const url = URL.createObjectURL(blob);
-    
+
     const link = document.createElement('a');
     link.href = url;
     link.download = options.filename;
     document.body.appendChild(link);
     link.click();
     document.body.removeChild(link);
-    
+
     URL.revokeObjectURL(url);
   }
 
@@ -259,11 +262,11 @@ class FileSharingService {
   private base64ToBlob(base64: string, mimeType: string): Blob {
     const byteCharacters = atob(base64);
     const byteNumbers = new Array(byteCharacters.length);
-    
+
     for (let i = 0; i < byteCharacters.length; i++) {
       byteNumbers[i] = byteCharacters.charCodeAt(i);
     }
-    
+
     const byteArray = new Uint8Array(byteNumbers);
     return new Blob([byteArray], { type: mimeType });
   }

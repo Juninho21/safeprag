@@ -26,67 +26,154 @@ interface CompanyData {
   };
 }
 
+
 const COMPANY_STORAGE_KEY = 'safeprag_company_data';
 const SERVICE_ORDERS_KEY = 'safeprag_service_orders';
-const SCHEDULES_KEY = 'safeprag_schedules';
+
+// Helper para formatar data para nome de arquivo (DD-MM-YYYY)
+const formatFilenameDate = (dateStr?: string): string => {
+  if (!dateStr) {
+    const today = new Date();
+    const day = String(today.getDate()).padStart(2, '0');
+    const month = String(today.getMonth() + 1).padStart(2, '0');
+    const year = today.getFullYear();
+    return `${day}-${month}-${year}`;
+  }
+
+  // Se já estiver no formato brasileiro (com / ou -)
+  if (dateStr.includes('/')) return dateStr.replace(/\//g, '-');
+  if (dateStr.includes('-') && dateStr.split('-')[0].length === 2) return dateStr;
+
+  // Se estiver em ISO (YYYY-MM-DD)
+  if (dateStr.match(/^\d{4}-\d{2}-\d{2}/)) {
+    const [year, month, day] = dateStr.split('-');
+    return `${day}-${month}-${year}`;
+  }
+
+  return dateStr.replace(/\//g, '-');
+};
+
+// Helper para construir o nome do arquivo padronizado
+const constructFilename = async (
+  orderNumber: string,
+  date: string,
+  technicianName?: string,
+  clientName?: string
+): Promise<string> => {
+  try {
+    const { storageService } = await import('./storageService');
+
+    // Formatar data
+    const formattedDate = formatFilenameDate(date);
+
+    // Nome do técnico
+    let techName = technicianName;
+
+    // Se o nome do técnico não foi passado ou é inválido, tenta buscar nos dados locais
+    if (!techName || techName === 'Não informado' || techName === 'Controlador') {
+      try {
+        // Tenta buscar da assinatura salva
+        const signaturesData = JSON.parse(localStorage.getItem('safeprag_signatures') || '[]');
+        const controladorSig = signaturesData
+          .filter((sig: any) => sig.signature_type === 'controlador')
+          .sort((a: any, b: any) => new Date(b.updated_at || 0).getTime() - new Date(a.updated_at || 0).getTime())[0];
+
+        if (controladorSig?.controlador_name) {
+          techName = controladorSig.controlador_name;
+        } else {
+          // Tenta buscar do usuário logado
+          const userData = storageService.getUserData();
+          if (userData?.name) {
+            techName = userData.name;
+          }
+        }
+      } catch (e) {
+        console.warn('Erro ao buscar fallback de nome de técnico', e);
+      }
+    }
+
+    // Fallback final
+    techName = techName || 'Controlador';
+
+    // Sanitizar strings para nome de arquivo
+    const safeClientName = (clientName || 'Cliente').replace(/[^a-zA-Z0-9\s-]/g, '').trim();
+    const safeTechName = techName.replace(/[^a-zA-Z0-9\s-]/g, '').trim();
+
+    // Formato: [Cliente] - [OS] - [Date] - [Tech]
+    return `${safeClientName} - ${orderNumber} - ${formattedDate} - ${safeTechName}`;
+  } catch (error) {
+    console.warn('Erro ao construir nome do arquivo:', error);
+    return `OS-${orderNumber}`;
+  }
+};
 
 // Função para salvar o PDF no IndexedDB
-export const storeServiceOrderPDF = (pdfBlob: Blob, serviceData: ServiceOrderPDFData): void => {
-  try {
-    // Converter Blob para base64
-    const reader = new FileReader();
-    reader.onloadend = async () => {
-      const base64PDF = (reader.result as string).split(',')[1];
-
-      // Determinar o tipo de serviço principal para exibição
-      // Se houver múltiplos serviços, usa o primeiro da lista
-      // Caso contrário, usa o serviço único (compatibilidade)
-      const serviceType = serviceData.services && serviceData.services.length > 0
-        ? serviceData.services[0].type
-        : (serviceData.service ? serviceData.service.type : 'Serviço');
-
-      // Obter nome do controlador de pragas usando a MESMA lógica do PDF
-      // Buscar assinaturas do localStorage
-      const signaturesData = JSON.parse(localStorage.getItem('safeprag_signatures') || '[]');
-      const controladorData = signaturesData
-        .filter((sig: any) => sig.signature_type === 'controlador')
-        .sort((a: any, b: any) => new Date(b.updated_at || 0).getTime() - new Date(a.updated_at || 0).getTime())[0] || null;
-
-      // Buscar userData como fallback
-      const { STORAGE_KEYS } = await import('./storageKeys');
-      const userDataStr = localStorage.getItem(STORAGE_KEYS.USER_DATA) || localStorage.getItem('userData');
-      let userData = null;
-      if (userDataStr) {
+export const storeServiceOrderPDF = async (pdfBlob: Blob, serviceData: ServiceOrderPDFData): Promise<void> => {
+  return new Promise((resolve, reject) => {
+    try {
+      // Converter Blob para base64
+      const reader = new FileReader();
+      reader.onloadend = async () => {
         try {
-          userData = JSON.parse(userDataStr);
-        } catch (e) {
-          console.error('Erro ao parsear userData:', e);
+          const base64PDF = (reader.result as string).split(',')[1];
+
+          // Determinar o tipo de serviço principal para exibição
+          // Se houver múltiplos serviços, usa o primeiro da lista
+          // Caso contrário, usa o serviço único (compatibilidade)
+          const serviceType = serviceData.services && serviceData.services.length > 0
+            ? serviceData.services[0].type
+            : (serviceData.service ? serviceData.service.type : 'Serviço');
+
+          // Obter nome do controlador de pragas usando a MESMA lógica do PDF
+          // Buscar assinaturas do localStorage
+          const signaturesData = JSON.parse(localStorage.getItem('safeprag_signatures') || '[]');
+          const controladorData = signaturesData
+            .filter((sig: any) => sig.signature_type === 'controlador')
+            .sort((a: any, b: any) => new Date(b.updated_at || 0).getTime() - new Date(a.updated_at || 0).getTime())[0] || null;
+
+          // Buscar userData como fallback
+          const { STORAGE_KEYS } = await import('./storageKeys');
+          const userDataStr = localStorage.getItem(STORAGE_KEYS.USER_DATA) || localStorage.getItem('userData');
+          let userData = null;
+          if (userDataStr) {
+            try {
+              userData = JSON.parse(userDataStr);
+            } catch (e) {
+              console.error('Erro ao parsear userData:', e);
+            }
+          }
+
+          // Usa a mesma lógica do PDF: controladorData primeiro, depois userData
+          const technicianName = controladorData?.controlador_name || userData?.name || 'Não informado';
+
+          // Inicializar IndexedDB se necessário
+          await indexedDBService.initDB();
+
+          // Armazenar no IndexedDB
+          await indexedDBService.storePDF({
+            orderNumber: serviceData.orderNumber,
+            pdf: base64PDF,
+            createdAt: new Date().toISOString(),
+            clientName: serviceData.client.name,
+            serviceType: serviceType,
+            clientCode: serviceData.client.code,
+            services: serviceData.services || [serviceData.service],
+            technicianName: technicianName,
+            serviceDate: serviceData.date
+          });
+          resolve();
+        } catch (innerError) {
+          console.error('Erro interno ao armazenar PDF:', innerError);
+          reject(innerError);
         }
-      }
-
-      // Usa a mesma lógica do PDF: controladorData primeiro, depois userData
-      const technicianName = controladorData?.controlador_name || userData?.name || 'Não informado';
-
-      // Inicializar IndexedDB se necessário
-      await indexedDBService.initDB();
-
-      // Armazenar no IndexedDB
-      await indexedDBService.storePDF({
-        orderNumber: serviceData.orderNumber,
-        pdf: base64PDF,
-        createdAt: new Date().toISOString(),
-        clientName: serviceData.client.name,
-        serviceType: serviceType,
-        clientCode: serviceData.client.code,
-        services: serviceData.services || [serviceData.service],
-        technicianName: technicianName
-      });
-    };
-    reader.readAsDataURL(pdfBlob);
-  } catch (error) {
-    console.error('Erro ao armazenar PDF:', error);
-    throw error;
-  }
+      };
+      reader.onerror = (e) => reject(e);
+      reader.readAsDataURL(pdfBlob);
+    } catch (error) {
+      console.error('Erro ao iniciar armazenamento do PDF:', error);
+      reject(error);
+    }
+  });
 };
 
 // Função para obter todos os PDFs armazenados
@@ -103,11 +190,87 @@ export const getAllStoredPDFs = async () => {
       createdAt: data.createdAt,
       clientName: data.clientName,
       serviceType: data.serviceType,
-      pdf: data.pdf
+      pdf: data.pdf,
+      technicianName: data.technicianName,
+      serviceDate: data.serviceDate
     }));
   } catch (error) {
     console.error('Erro ao recuperar PDFs:', error);
     return [];
+  }
+};
+
+// Função para compartilhar PDF já salvo no localStorage
+export const sharePDFFromStorage = async (orderNumber: string): Promise<void> => {
+  try {
+    // Inicializar IndexedDB se necessário
+    await indexedDBService.initDB();
+
+    // Buscar PDF do IndexedDB
+    const pdfData = await indexedDBService.getPDF(orderNumber);
+
+    if (!pdfData) {
+      throw new Error('PDF não encontrado no armazenamento');
+    }
+
+    // Tenta usar a data do serviço (serviceDate) ou fallback para createdAt
+    const dateStr = pdfData.serviceDate || (pdfData.createdAt ? new Date(pdfData.createdAt).toLocaleDateString('pt-BR') : new Date().toLocaleDateString('pt-BR'));
+
+    // Tenta obter o nome do técnico do PDF, ou usa fallback
+    let technicianName = pdfData.technicianName;
+
+    // Se não tiver nome técnico no PDF (legado), tenta buscar das assinaturas ou user data
+    if (!technicianName) {
+      try {
+        // Tenta buscar assinatura do controlador
+        const signaturesString = localStorage.getItem('safeprag_signatures');
+        const signaturesData = signaturesString ? JSON.parse(signaturesString) : [];
+        const controladorSig = signaturesData
+          .filter((sig: any) => sig.signature_type === 'controlador')
+          .sort((a: any, b: any) => new Date(b.updated_at || 0).getTime() - new Date(a.updated_at || 0).getTime())[0];
+
+        if (controladorSig?.controlador_name) {
+          technicianName = controladorSig.controlador_name;
+        } else {
+          // Tenta dados do usuário
+          const userDataString = localStorage.getItem('safeprag_user_data') || localStorage.getItem('userData');
+          if (userDataString) {
+            const userData = JSON.parse(userDataString);
+            if (userData?.name) technicianName = userData.name;
+          }
+        }
+      } catch (e) {
+        console.warn('Erro ao tentar recuperar technicianName fallback no share', e);
+      }
+    }
+
+    // Construir nome do arquivo padrão
+    const filename = await constructFilename(
+      orderNumber,
+      dateStr,
+      technicianName,
+      pdfData.clientName
+    );
+
+    if (Capacitor.isNativePlatform()) {
+      const { fileSharingService } = await import('./fileSharingService');
+
+      const success = await fileSharingService.shareFile({
+        filename: `${filename}.pdf`,
+        data: pdfData.pdf,
+        mimeType: 'application/pdf'
+      });
+
+      if (!success) {
+        throw new Error('Falha no compartilhamento do PDF');
+      }
+    } else {
+      // Em plataformas web, fazer download
+      await downloadPDFWeb(pdfData.pdf, orderNumber, filename);
+    }
+  } catch (error) {
+    console.error('Erro ao compartilhar PDF do armazenamento:', error);
+    throw error;
   }
 };
 
@@ -124,12 +287,16 @@ export const downloadPDFFromStorage = async (orderNumber: string): Promise<void>
       throw new Error('PDF não encontrado');
     }
 
-    // Construir nome do arquivo com código do cliente se disponível
-    let downloadFilename = `ordem-servico-${orderNumber}`;
-    if (pdfData.clientCode) {
-      const sanitizedClientCode = pdfData.clientCode.replace(/[^a-zA-Z0-9\s]/g, '').replace(/\s+/g, '_');
-      downloadFilename = `OS_${orderNumber}_${sanitizedClientCode}_${new Date().toLocaleDateString('pt-BR').replace(/\//g, '-')}`;
-    }
+    // Tenta usar a data do serviço (serviceDate) ou fallback para createdAt
+    const dateStr = pdfData.serviceDate || (pdfData.createdAt ? new Date(pdfData.createdAt).toLocaleDateString('pt-BR') : new Date().toLocaleDateString('pt-BR'));
+
+    // Construir nome do arquivo padrão
+    const downloadFilename = await constructFilename(
+      orderNumber,
+      dateStr,
+      pdfData.technicianName,
+      pdfData.clientName
+    );
 
     // Verificar se estamos em uma plataforma nativa (Capacitor)
     if (Capacitor.isNativePlatform()) {
@@ -165,7 +332,7 @@ export const downloadPDFFromStorage = async (orderNumber: string): Promise<void>
         const { FileService } = await import('./FileService');
 
         // Converte base64 diretamente para o FileService
-        const fileName = `ordem-servico-${orderNumber}`;
+        const fileName = downloadFilename;
 
         // Usa o Filesystem diretamente para evitar problemas com Blob
         const { Filesystem, Directory } = await import('@capacitor/filesystem');
@@ -203,19 +370,19 @@ export const downloadPDFFromStorage = async (orderNumber: string): Promise<void>
       } catch (capacitorError) {
         console.error('Erro no Capacitor, tentando método web:', capacitorError);
         // Fallback para método web se o Capacitor falhar
-        await downloadPDFWeb(pdfData.pdf, orderNumber);
+        await downloadPDFWeb(pdfData.pdf, orderNumber, downloadFilename);
       }
     } else if (isPWA && isMobile) {
       // Para PWA em dispositivos móveis, usa uma abordagem otimizada
       try {
-        await downloadPDFForPWA(pdfData.pdf, orderNumber);
+        await downloadPDFForPWA(pdfData.pdf, orderNumber, downloadFilename);
       } catch (pwaError) {
         console.error('Erro no PWA, usando método web padrão:', pwaError);
-        await downloadPDFWeb(pdfData.pdf, orderNumber);
+        await downloadPDFWeb(pdfData.pdf, orderNumber, downloadFilename);
       }
     } else {
       // Usa o método tradicional para navegadores web
-      await downloadPDFWeb(pdfData.pdf, orderNumber);
+      await downloadPDFWeb(pdfData.pdf, orderNumber, downloadFilename);
     }
   } catch (error) {
     console.error('Erro ao baixar PDF:', error);
@@ -224,7 +391,7 @@ export const downloadPDFFromStorage = async (orderNumber: string): Promise<void>
 };
 
 // Função específica para PWA em dispositivos móveis
-const downloadPDFForPWA = async (base64Data: string, orderNumber: string): Promise<void> => {
+const downloadPDFForPWA = async (base64Data: string, orderNumber: string, name: string = `ordem-servico-${orderNumber}`): Promise<void> => {
   try {
     // Converte base64 para blob
     const binaryString = atob(base64Data);
@@ -232,8 +399,8 @@ const downloadPDFForPWA = async (base64Data: string, orderNumber: string): Promi
     for (let i = 0; i < binaryString.length; i++) {
       bytes[i] = binaryString.charCodeAt(i);
     }
-    const blob = new Blob([bytes], { type: 'application/pdf' });
-    const fileName = `ordem-servico-${orderNumber}.pdf`;
+    const blob = new Blob([bytes as unknown as BlobPart], { type: 'application/pdf' });
+    const fileName = name.endsWith('.pdf') ? name : `${name}.pdf`;
 
     // Tenta usar Web Share API se disponível (Android PWA)
     if (navigator.share && navigator.canShare) {
@@ -270,7 +437,7 @@ const downloadPDFForPWA = async (base64Data: string, orderNumber: string): Promi
     }
 
     // Fallback final: download tradicional
-    await downloadPDFWeb(base64Data, orderNumber);
+    await downloadPDFWeb(base64Data, orderNumber, name);
 
   } catch (error) {
     console.error('Erro no download PWA:', error);
@@ -279,7 +446,7 @@ const downloadPDFForPWA = async (base64Data: string, orderNumber: string): Promi
 };
 
 // Função auxiliar para download web
-const downloadPDFWeb = async (base64Data: string, orderNumber: string): Promise<void> => {
+const downloadPDFWeb = async (base64Data: string, orderNumber: string, name: string = `ordem-servico-${orderNumber}`): Promise<void> => {
   try {
     // Converte base64 para blob
     const binaryString = atob(base64Data);
@@ -287,12 +454,14 @@ const downloadPDFWeb = async (base64Data: string, orderNumber: string): Promise<
     for (let i = 0; i < binaryString.length; i++) {
       bytes[i] = binaryString.charCodeAt(i);
     }
-    const blob = new Blob([bytes], { type: 'application/pdf' });
+    const blob = new Blob([bytes as unknown as BlobPart], { type: 'application/pdf' });
 
     const url = window.URL.createObjectURL(blob);
     const link = document.createElement('a');
     link.href = url;
-    link.download = `ordem-servico-${orderNumber}.pdf`;
+    // Usa o nome passado ou gera um padrão
+    const finalFilename = name.endsWith('.pdf') ? name : `${name}.pdf`;
+    link.download = finalFilename;
     document.body.appendChild(link);
     link.click();
     document.body.removeChild(link);
@@ -346,7 +515,7 @@ export const generateServiceOrderPDF = async (
     serviceData.orderNumber = osNumber.toString();
 
     // Buscar dados da empresa usando a função melhorada
-    const companyData = await getCompanyData(companyId);
+    let companyData = await getCompanyData(companyId);
 
     // Buscar dados da assinatura do cliente do localStorage
     const clientSignatureData = localStorage.getItem('client_signature_data');
@@ -654,7 +823,6 @@ export const generateServiceOrderPDF = async (
     if (companyData?.logo_url) {
       logoBase64 = await imageUrlToBase64(companyData.logo_url);
     }
-
     // Cabeçalho principal
     const header = document.createElement('div');
     header.style.width = '100%';
@@ -1616,10 +1784,30 @@ export const generateServiceOrderPDF = async (
       pestCountsData: serviceData.pestCounts
     });
 
+    // Preparar dados para o nome do arquivo
+    // Buscar assinaturas do localStorage (logica movida para uso no nome do arquivo)
+    const techSignaturesData = JSON.parse(localStorage.getItem('safeprag_signatures') || '[]');
+    const techControladorData = techSignaturesData
+      .filter((sig: any) => sig.signature_type === 'controlador')
+      .sort((a: any, b: any) => new Date(b.updated_at || 0).getTime() - new Date(a.updated_at || 0).getTime())[0] || null;
+
+    // Buscar userData como fallback
+    const techUserData = JSON.parse(localStorage.getItem('safeprag_user_data') || localStorage.getItem('userData') || '{}');
+
+    const technicianName = techControladorData?.controlador_name || techUserData?.name || 'Não informado';
+
+    // Construir nome do arquivo
+    const filename = await constructFilename(
+      serviceData.orderNumber,
+      serviceData.date,
+      technicianName,
+      serviceData.client.name
+    );
+
     // Opções do PDF
     const pdfOptions = {
       margin: [10, 10, 20, 10],
-      filename: `ordem-servico-${serviceData.orderNumber}.pdf`,
+      filename: `${filename}.pdf`,
       image: { type: 'jpeg', quality: 0.98 },
       html2canvas: {
         scale: 2,
@@ -1664,7 +1852,7 @@ export const generateServiceOrderPDF = async (
 
     // Salva no localStorage
     const pdfBlob = pdf.output('blob');
-    storeServiceOrderPDF(pdfBlob, serviceData);
+    await storeServiceOrderPDF(pdfBlob, serviceData);
 
     // Retornar o blob do PDF
     return pdfBlob;
@@ -1688,17 +1876,20 @@ export const generateAndShareServiceOrderPDF = async (
     // Gerar o PDF
     const pdfBlob = await generateServiceOrderPDF(serviceData, companyId);
 
-    // Construir nome do arquivo com código do cliente
-    // Construir nome do arquivo com formato: OS_(numero)_(cliente)_(data)_(hora)
-    const sanitizedClientName = serviceData.client?.name
-      ? serviceData.client.name.replace(/[^a-zA-Z0-9\s-]/g, '').trim()
-      : 'Cliente';
+    // Buscar tecnico para o nome do arquivo
+    const signaturesData = JSON.parse(localStorage.getItem('safeprag_signatures') || '[]');
+    const controladorData = signaturesData
+      .filter((sig: any) => sig.signature_type === 'controlador')
+      .sort((a: any, b: any) => new Date(b.updated_at || 0).getTime() - new Date(a.updated_at || 0).getTime())[0] || null;
+    const userData = JSON.parse(localStorage.getItem('userData') || '{}');
+    const technicianName = controladorData?.controlador_name || userData?.name;
 
-    const now = new Date();
-    const dateStr = now.toLocaleDateString('pt-BR').replace(/\//g, '-');
-    const timeStr = now.toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' }).replace(/:/g, '-');
-
-    const filename = `OS_${serviceData.orderNumber}_${sanitizedClientName}_${dateStr}_${timeStr}`;
+    const filename = await constructFilename(
+      serviceData.orderNumber,
+      serviceData.date,
+      technicianName,
+      serviceData.client?.name
+    );
 
     // Se estiver em plataforma nativa e shouldShare for true, perguntar se deseja compartilhar
     if (Capacitor.isNativePlatform() && shouldShare) {
@@ -1738,6 +1929,16 @@ export const generateAndShareServiceOrderPDF = async (
           await downloadPDFFromStorage(serviceData.orderNumber);
         }
       }
+    } else if (shouldShare) {
+      // Se for Web, faz o download direto
+      const url = window.URL.createObjectURL(pdfBlob);
+      const link = document.createElement('a');
+      link.href = url;
+      link.download = `${filename}.pdf`;
+      document.body.appendChild(link);
+      link.click();
+      document.body.removeChild(link);
+      window.URL.revokeObjectURL(url);
     }
 
     return pdfBlob;
@@ -1747,48 +1948,7 @@ export const generateAndShareServiceOrderPDF = async (
   }
 };
 
-// Função para compartilhar PDF já salvo no localStorage
-export const sharePDFFromStorage = async (orderNumber: string): Promise<void> => {
-  try {
-    const storedPDFs = JSON.parse(localStorage.getItem('safeprag_service_order_pdfs') || '{}');
-    const pdfData = storedPDFs[orderNumber];
 
-    if (!pdfData) {
-      throw new Error('PDF não encontrado no armazenamento');
-    }
-
-    // Construir nome do arquivo
-    // Construir nome do arquivo
-    const sanitizedClientName = pdfData.clientName
-      ? pdfData.clientName.replace(/[^a-zA-Z0-9\s-]/g, '').trim()
-      : 'Cliente';
-
-    // Tenta usar a data de criação se disponível, senão usa agora
-    const dateObj = pdfData.createdAt ? new Date(pdfData.createdAt) : new Date();
-    const dateStr = dateObj.toLocaleDateString('pt-BR').replace(/\//g, '-');
-    const timeStr = dateObj.toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' }).replace(/:/g, '-');
-
-    const filename = `OS_${orderNumber}_${sanitizedClientName}_${dateStr}_${timeStr}`;
-
-    if (Capacitor.isNativePlatform()) {
-      const success = await fileSharingService.shareFile({
-        filename: `${filename}.pdf`,
-        data: pdfData.pdf,
-        mimeType: 'application/pdf'
-      });
-
-      if (!success) {
-        throw new Error('Falha no compartilhamento do PDF');
-      }
-    } else {
-      // Em plataformas web, fazer download
-      await downloadPDFFromStorage(orderNumber);
-    }
-  } catch (error) {
-    console.error('Erro ao compartilhar PDF do armazenamento:', error);
-    throw error;
-  }
-};
 
 // Função para gerar PDF editável usando pdf-lib
 export const generateEditableServiceOrderPDF = async (
@@ -2037,16 +2197,18 @@ export const generateEditableServiceOrderPDF = async (
     const pdfBytes = await pdfDoc.save();
 
     // Construir nome do arquivo
-    // Construir nome do arquivo com formato: OS_Editavel_(numero)_(cliente)_(data)_(hora)
-    const sanitizedClientName = serviceData.client?.name
-      ? serviceData.client.name.replace(/[^a-zA-Z0-9\s-]/g, '').trim()
-      : 'Cliente';
+    // Recarregar userData para garantir que temos o nome
+    // Recarregar userData para garantir que temos o nome
+    const { storageService } = await import('./storageService');
+    const userForName = storageService.getUserData();
+    const technicianName = userForName?.name;
+    const filename = await constructFilename(
+      serviceData.orderNumber,
+      serviceData.date,
+      technicianName
+    );
 
-    const now = new Date();
-    const dateStr = now.toLocaleDateString('pt-BR').replace(/\//g, '-');
-    const timeStr = now.toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' }).replace(/:/g, '-');
-
-    const filename = `OS_Editavel_${serviceData.orderNumber}_${sanitizedClientName}_${dateStr}_${timeStr}`;
+    const filenameEditable = `${filename} - Editavel`;
 
     // Download do PDF
     if (Capacitor.isNativePlatform()) {
@@ -2054,7 +2216,7 @@ export const generateEditableServiceOrderPDF = async (
       const base64Data = btoa(String.fromCharCode(...pdfBytes));
 
       const success = await fileSharingService.shareFile({
-        filename: `${filename}.pdf`,
+        filename: `${filenameEditable}.pdf`,
         data: base64Data,
         mimeType: 'application/pdf'
       });
@@ -2064,11 +2226,11 @@ export const generateEditableServiceOrderPDF = async (
       }
     } else {
       // Download para web
-      const blob = new Blob([pdfBytes], { type: 'application/pdf' });
+      const blob = new Blob([pdfBytes as unknown as BlobPart], { type: 'application/pdf' });
       const url = URL.createObjectURL(blob);
       const link = document.createElement('a');
       link.href = url;
-      link.download = `${filename}.pdf`;
+      link.download = `${filenameEditable}.pdf`;
       document.body.appendChild(link);
       link.click();
       document.body.removeChild(link);

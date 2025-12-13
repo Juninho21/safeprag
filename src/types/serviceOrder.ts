@@ -36,4 +36,5 @@ export interface ServiceOrder {
   applicationMethod?: string;
   pestCounts?: any[];
   devices?: any[];
+  pdfUrl?: string;
 }

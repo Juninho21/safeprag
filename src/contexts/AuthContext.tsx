@@ -79,7 +79,19 @@ export function AuthProvider({ children }: { children: ReactNode }) {
           unsubscribeSnapshot = onSnapshot(userRef, (docSnap) => {
             if (docSnap.exists()) {
               const data = docSnap.data();
-              setSubscription(data.subscription || null);
+              let sub = data.subscription || null;
+
+              // Check if subscription is expired by date locally
+              if (sub && sub.status === 'active' && sub.endDate) {
+                const now = new Date();
+                const endDate = sub.endDate.toDate ? sub.endDate.toDate() : new Date(sub.endDate);
+                if (endDate < now) {
+                  console.warn('Subscription expired by date check:', endDate);
+                  sub = { ...sub, status: 'expired' };
+                }
+              }
+
+              setSubscription(sub);
             }
           }, (error) => {
             console.error("Error listening to user doc:", error);

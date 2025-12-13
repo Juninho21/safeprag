@@ -23,7 +23,6 @@ export const billingService = {
   // Cache implementation
   _statusCache: {} as Record<string, { data: SubscriptionStatus; timestamp: number }>,
   _CACHE_DURATION: 5 * 60 * 1000, // 5 minutes
-
   async getStatus(companyId: string): Promise<SubscriptionStatus> {
     // Bypass vitalício para proprietário
     const email = auth?.currentUser?.email?.toLowerCase?.() || '';

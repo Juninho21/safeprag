@@ -88,18 +88,18 @@ const ServiceActivity: React.FC<ServiceActivityProps> = ({
   onProductClear
 }) => {
   const dashboardRef = useRef<HTMLDivElement>(null);
-  
+
   // Adicionar log para debug dos valores
   console.log('Valor atual de serviceType:', serviceType);
-  
+
   const isTreatmentService = ['pulverizacao', 'atomizacao', 'termonebulizacao', 'polvilhamento', 'iscagem_com_gel'].includes(serviceType.toLowerCase());
   const showProductSelector = isTreatmentService || serviceType.toLowerCase() === 'monitoramento';
-  
+
   // Adicionar logs para debug
   console.log('isTreatmentService:', isTreatmentService);
   console.log('showProductSelector:', showProductSelector);
   console.log('Lista de serviços de tratamento:', ['pulverizacao', 'atomizacao', 'termonebulizacao', 'polvilhamento', 'iscagem_com_gel']);
-  
+
   const [showNewPestInput, setShowNewPestInput] = useState(false);
   const [newPest, setNewPest] = useState('');
   const [showNewServiceInput, setShowNewServiceInput] = useState(false);
@@ -107,7 +107,7 @@ const ServiceActivity: React.FC<ServiceActivityProps> = ({
   const [localStartTime, setLocalStartTime] = useState<Date | null>(startTime);
   const [showRetroactiveModal, setShowRetroactiveModal] = useState(false);
   const [showPestCountingModal, setShowPestCountingModal] = useState(false);
-  
+
   // Botão 'Contagem de Pragas' piscando em verde por 15s quando houver dispositivos elegíveis
   const [flashPestButton, setFlashPestButton] = useState(false);
 
@@ -130,14 +130,14 @@ const ServiceActivity: React.FC<ServiceActivityProps> = ({
       setFlashPestButton(false);
     }
   }, [state.savedDevices]);
-  
+
   // Estado para gerenciar múltiplos serviços
   const [serviceList, setServiceList] = useState<ServiceListItem[]>([]);
-  
+
   // Estado para gerenciar contagem de pragas
   const [pestCounts, setPestCounts] = useState<DevicePestCount[]>([]);
   const [currentServiceId, setCurrentServiceId] = useState<string | null>(null);
-  
+
   // Lista inicial de pragas comuns
   const initialPests = [
     'Roedores',
@@ -155,7 +155,7 @@ const ServiceActivity: React.FC<ServiceActivityProps> = ({
   ];
 
   const [availablePests, setAvailablePests] = useState<string[]>(initialPests);
-  
+
   // Lista inicial de tipos de serviço
   const initialServiceTypes = [
     'Inspeção',
@@ -165,14 +165,15 @@ const ServiceActivity: React.FC<ServiceActivityProps> = ({
     'Termonebulização',
     'Polvilhamento',
     'Iscagem com gel',
+    'Implantação',
   ];
 
   const [availableServiceTypes, setAvailableServiceTypes] = useState<string[]>(initialServiceTypes);
-  
+
   // Função para salvar as contagens de pragas no localStorage
   const handleSavePestCounts = (counts: DevicePestCount[]) => {
     setPestCounts(counts);
-    
+
     try {
       // Salvar contagens de pragas no localStorage
       localStorage.setItem(STORAGE_KEYS.PEST_COUNTS, JSON.stringify(counts));
@@ -202,7 +203,7 @@ const ServiceActivity: React.FC<ServiceActivityProps> = ({
             setShowNewServiceInput(activityState.showNewServiceInput);
             setNewService(activityState.newService || '');
           }
-          
+
           // Carregar lista de serviços
           const savedServiceList = await activityService.loadServiceList(activeOrder.id);
           if (savedServiceList.length > 0) {
@@ -222,7 +223,7 @@ const ServiceActivity: React.FC<ServiceActivityProps> = ({
             setServiceList([initialService]);
             setCurrentServiceId(initialService.id);
           }
-          
+
           // Carregar contagens de pragas do localStorage
           try {
             if (!endTime && (!activeOrder.status || activeOrder.status === 'in_progress')) {
@@ -240,7 +241,7 @@ const ServiceActivity: React.FC<ServiceActivityProps> = ({
           } catch (error) {
             console.error('Erro ao carregar contagens de pragas do localStorage:', error);
           }
-          
+
           // Carregar horário de início da ordem
           if (activeOrder.start_time) {
             setLocalStartTime(new Date(activeOrder.start_time));
@@ -273,10 +274,10 @@ const ServiceActivity: React.FC<ServiceActivityProps> = ({
         setCurrentServiceId(emptyService.id);
       }
     };
-    
+
     loadActivityData();
   }, []);
-  
+
   // Funções para gerenciar múltiplos serviços
   const addNewService = () => {
     const newServiceItem: ServiceListItem = {
@@ -289,7 +290,7 @@ const ServiceActivity: React.FC<ServiceActivityProps> = ({
     };
     setServiceList([...serviceList, newServiceItem]);
     setCurrentServiceId(newServiceItem.id);
-    
+
     // Limpa os campos do formulário para o novo serviço
     onServiceTypeChange({ target: { value: '' } } as React.ChangeEvent<HTMLSelectElement>);
     onTargetPestChange('');
@@ -297,16 +298,16 @@ const ServiceActivity: React.FC<ServiceActivityProps> = ({
     onProductAmountChange('');
     onProductSelect(null);
   };
-  
+
   const removeService = (id: string) => {
     const updatedList = serviceList.filter(service => service.id !== id);
     setServiceList(updatedList);
-    
+
     // Se removeu o serviço atual, seleciona o primeiro da lista
     if (id === currentServiceId && updatedList.length > 0) {
       setCurrentServiceId(updatedList[0].id);
       const currentService = updatedList[0];
-      
+
       // Atualiza os campos do formulário com os dados do serviço selecionado
       onServiceTypeChange({ target: { value: currentService.serviceType } } as React.ChangeEvent<HTMLSelectElement>);
       onTargetPestChange(currentService.targetPest);
@@ -315,7 +316,7 @@ const ServiceActivity: React.FC<ServiceActivityProps> = ({
       onProductSelect(currentService.product);
     }
   };
-  
+
   const selectService = (id: string) => {
     setCurrentServiceId(id);
     const selectedService = serviceList.find(service => service.id === id);
@@ -328,7 +329,7 @@ const ServiceActivity: React.FC<ServiceActivityProps> = ({
       onProductSelect(selectedService.product);
     }
   };
-  
+
   // Função para salvar estado da atividade no localStorage
   const saveActivityState = async () => {
     try {
@@ -362,19 +363,19 @@ const ServiceActivity: React.FC<ServiceActivityProps> = ({
           // Verificar se o tipo de serviço DO ITEM da lista usa produto
           const itemUsesProduct = productServiceTypes.includes(service.serviceType.toLowerCase());
 
-          return service.id === currentServiceId 
+          return service.id === currentServiceId
             ? {
-                ...service,
-                serviceType,
-                targetPest,
-                location,
-                // Incluir o produto SOMENTE se o tipo de serviço do item usar produto E houver um produto selecionado
-                product: itemUsesProduct ? state.selectedProduct : null,
-                productAmount
-              }
+              ...service,
+              serviceType,
+              targetPest,
+              location,
+              // Incluir o produto SOMENTE se o tipo de serviço do item usar produto E houver um produto selecionado
+              product: itemUsesProduct ? state.selectedProduct : null,
+              productAmount
+            }
             : service;
         });
-        
+
         // Salvar lista de serviços no localStorage
         const saveServiceList = async () => {
           try {
@@ -387,7 +388,7 @@ const ServiceActivity: React.FC<ServiceActivityProps> = ({
           }
         };
         saveServiceList();
-        
+
         return updatedList;
       });
     }
@@ -451,7 +452,7 @@ const ServiceActivity: React.FC<ServiceActivityProps> = ({
       window.removeEventListener('serviceStart', handleServiceStart as EventListener);
     };
   }, [onServiceTypeChange, onTargetPestChange, onLocationChange, onApplicationMethodChange,
-      onProductAmountChange, onObservationsChange, onProductSelect]);
+    onProductAmountChange, onObservationsChange, onProductSelect]);
 
   // Atualiza o localStartTime quando o startTime prop muda
   useEffect(() => {
@@ -464,10 +465,10 @@ const ServiceActivity: React.FC<ServiceActivityProps> = ({
   useEffect(() => {
     const handleServiceActivityCleanup = (event: CustomEvent) => {
       console.log('Limpando dados da página de atividade:', event.detail);
-      
+
       // Se for uma nova ordem, limpa tudo exceto o que será preenchido automaticamente
       const isNewOrder = event.detail?.newOrder;
-      
+
       // Limpa todos os campos do formulário
       onServiceTypeChange({ target: { value: '' } } as React.ChangeEvent<HTMLSelectElement>);
       onTargetPestChange('');
@@ -501,7 +502,7 @@ const ServiceActivity: React.FC<ServiceActivityProps> = ({
       setNewPest('');
       setShowNewServiceInput(false);
       setNewService('');
-      
+
       // Se for finalização de OS, limpa o horário de início também
       if (!isNewOrder) {
         setLocalStartTime(null);
@@ -521,13 +522,13 @@ const ServiceActivity: React.FC<ServiceActivityProps> = ({
 
     window.addEventListener('serviceActivityCleanup', handleServiceActivityCleanup as EventListener);
     window.addEventListener('serviceOrderFinished', handleServiceOrderFinished as EventListener);
-    
+
     return () => {
       window.removeEventListener('serviceActivityCleanup', handleServiceActivityCleanup as EventListener);
       window.removeEventListener('serviceOrderFinished', handleServiceOrderFinished as EventListener);
     };
   }, [onServiceTypeChange, onTargetPestChange, onLocationChange, onApplicationMethodChange,
-      onProductAmountChange, onObservationsChange, onProductSelect]);
+    onProductAmountChange, onObservationsChange, onProductSelect]);
 
   // Converte a lista de serviços para JSON para ser acessada pelo App.tsx
   const serviceListJson = JSON.stringify(serviceList);
@@ -540,11 +541,11 @@ const ServiceActivity: React.FC<ServiceActivityProps> = ({
     duration: string;
   }) => {
     console.log('Dados retroativos:', data);
-    
+
     // Cria objetos Date para início e fim
     const startDate = new Date(`${data.date}T${data.startTime}:00`);
     setLocalStartTime(startDate);
-    
+
     // Armazena os dados retroativos no localStorage para uso na geração do PDF
     localStorage.setItem('retroactive_service_data', JSON.stringify({
       date: data.date,
@@ -553,7 +554,7 @@ const ServiceActivity: React.FC<ServiceActivityProps> = ({
       duration: data.duration,
       isRetroactive: true
     }));
-    
+
     // Salvar dados retroativos no Supabase
     try {
       const activeOrder = await activityService.getActiveServiceOrder();
@@ -567,7 +568,7 @@ const ServiceActivity: React.FC<ServiceActivityProps> = ({
     } catch (error) {
       console.error('Erro ao salvar dados retroativos:', error);
     }
-    
+
     // Dispara evento de início de OS com data retroativa
     const startEvent = new CustomEvent('serviceStart', {
       detail: {
@@ -578,11 +579,11 @@ const ServiceActivity: React.FC<ServiceActivityProps> = ({
       }
     });
     window.dispatchEvent(startEvent);
-    
+
     // Se tiver horário de fim, também dispara evento de finalização
     if (data.endTime) {
       const endDate = new Date(`${data.date}T${data.endTime}:00`);
-      
+
       // Dispara evento de finalização com pequeno atraso para garantir que o início seja processado primeiro
       setTimeout(() => {
         const endEvent = new CustomEvent('serviceOrderFinished', {
@@ -596,7 +597,7 @@ const ServiceActivity: React.FC<ServiceActivityProps> = ({
       }, 500);
     }
   };
-  
+
   // Carregar contagens de pragas do Supabase ao iniciar
   useEffect(() => {
     const loadSavedCounts = async () => {
@@ -702,7 +703,7 @@ const ServiceActivity: React.FC<ServiceActivityProps> = ({
             )}
           </div>
         </div>
-        
+
         {/* Lista de serviços adicionados - mostrar apenas se houver serviços com tipo definido */}
         {/* Ocultado da interface */}
         {serviceList.some(service => service.serviceType) && (
@@ -719,8 +720,8 @@ const ServiceActivity: React.FC<ServiceActivityProps> = ({
             </div>
             <div className="space-y-2">
               {serviceList.map((service) => (
-                <div 
-                  key={service.id} 
+                <div
+                  key={service.id}
                   className={`flex justify-between items-center p-2 rounded-md cursor-pointer ${service.id === currentServiceId ? 'bg-blue-100 border border-blue-300' : 'bg-white border'}`}
                   onClick={() => selectService(service.id)}
                 >
@@ -806,7 +807,7 @@ const ServiceActivity: React.FC<ServiceActivityProps> = ({
                 type="text"
                 value={newService}
                 onChange={(e) => setNewService(e.target.value)}
-                 onKeyPress={(e) => {
+                onKeyPress={(e) => {
                   if (e.key === 'Enter') {
                     handleAddNewServiceType();
                   }
@@ -836,7 +837,7 @@ const ServiceActivity: React.FC<ServiceActivityProps> = ({
 
           {/* Lista de tipos de serviço adicionados dinamicamente com botão de remover - SEMPRE VISÍVEL SE HOUVER TIPOS ADICIONADOS */}
           {availableServiceTypes.length > initialServiceTypes.length && (
-             <div className="mt-4 border-t pt-4">
+            <div className="mt-4 border-t pt-4">
               <p className="text-sm font-medium text-gray-700 mb-2">Tipos de serviço adicionados dinamicamente:</p>
               <ul className="space-y-2">
                 {availableServiceTypes
@@ -849,7 +850,7 @@ const ServiceActivity: React.FC<ServiceActivityProps> = ({
                         className="text-red-500 hover:text-red-700 p-1"
                         title="Remover tipo de serviço"
                       >
-                         <Trash2 size={18} />
+                        <Trash2 size={18} />
                       </button>
                     </li>
                   ))
@@ -919,7 +920,7 @@ const ServiceActivity: React.FC<ServiceActivityProps> = ({
               </div>
             </div>
           )}
-          
+
           {/* Lista de pragas adicionadas dinamicamente com botão de remover - SEMPRE VISÍVEL SE HOUVER PRAGAS ADICIONADAS */}
           {availablePests.length > initialPests.length && (
             <div className="mt-4 border-t pt-4">
@@ -1004,8 +1005,8 @@ const ServiceActivity: React.FC<ServiceActivityProps> = ({
                   setShowPestCountingModal(true);
                 }}
                 className={"w-full sm:w-auto px-4 py-3 sm:py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-blue-500 font-medium text-center " + (flashPestButton ? "animate-blink-yellow" : "")}
-               >
-                 Contagem de Pragas
+              >
+                Contagem de Pragas
               </button>
             </div>
           </div>
@@ -1043,7 +1044,7 @@ const ServiceActivity: React.FC<ServiceActivityProps> = ({
               if (serviceType && targetPest && location) {
                 // Adiciona o serviço atual à lista e cria um novo serviço vazio
                 addNewService();
-                
+
                 // Limpa todos os campos do formulário
                 onServiceTypeChange({ target: { value: '' } } as React.ChangeEvent<HTMLSelectElement>);
                 onTargetPestChange('');
@@ -1052,11 +1053,11 @@ const ServiceActivity: React.FC<ServiceActivityProps> = ({
                 onProductAmountChange('');
                 onObservationsChange('');
                 onProductSelect(null);
-                
+
                 // Exibe mensagem de sucesso
                 const toast = document.createElement('div');
                 // toast.className = 'fixed bottom-4 right-4 bg-green-500 text-white px-4 py-2 rounded-md shadow-lg z-50';
-        // toast.textContent = 'Serviço adicionado com sucesso!';
+                // toast.textContent = 'Serviço adicionado com sucesso!';
                 document.body.appendChild(toast);
                 setTimeout(() => {
                   document.body.removeChild(toast);
@@ -1065,7 +1066,7 @@ const ServiceActivity: React.FC<ServiceActivityProps> = ({
                 // Exibe mensagem de erro
                 const toast = document.createElement('div');
                 // toast.className = 'fixed bottom-4 right-4 bg-red-500 text-white px-4 py-2 rounded-md shadow-lg z-50';
-        // toast.textContent = 'Preencha os campos obrigatórios: Tipo de Serviço, Praga Alvo e Local';
+                // toast.textContent = 'Preencha os campos obrigatórios: Tipo de Serviço, Praga Alvo e Local';
                 document.body.appendChild(toast);
                 setTimeout(() => {
                   document.body.removeChild(toast);
@@ -1190,9 +1191,9 @@ const ServiceActivity: React.FC<ServiceActivityProps> = ({
                 <div className="mt-6">
                   <h3 className="font-medium text-gray-900 mb-3">Dispositivos Salvos</h3>
                   <div className="bg-gray-50 rounded-lg p-4">
-                    <DeviceSummary 
-                      devices={state.savedDevices} 
-                      selectedProduct={state.selectedProduct} 
+                    <DeviceSummary
+                      devices={state.savedDevices}
+                      selectedProduct={state.selectedProduct}
                     />
                   </div>
                 </div>

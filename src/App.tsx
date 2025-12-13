@@ -18,10 +18,10 @@ import { KeepAliveProvider } from './contexts/KeepAliveContext';
 import { ApprovalModal } from './components/ApprovalModal';
 import ServiceActivity from './components/ServiceActivity';
 import { storageService } from './services/storageService';
-import { generateServiceOrderPDF } from './services/pdfService';
+import { generateServiceOrderPDF, generateAndShareServiceOrderPDF } from './services/pdfService';
 import { getActiveServiceOrder, approveServiceOrder, updateScheduleStatus, finishServiceOrder } from './services/ordemServicoService';
 // import { toast } from 'react-toastify'; // Removido
-import { fileSharingService } from './services/fileSharingService';
+
 import { v4 as uuidv4 } from 'uuid';
 import { STORAGE_KEYS } from './services/storageKeys';
 import { useAuth } from './contexts/AuthContext';
@@ -1183,36 +1183,16 @@ function App() {
 
       // Gerar e baixar o PDF
       try {
-        const pdfBlob = await generateServiceOrderPDF(serviceData as any);
 
-        // Converter blob para base64 usando Promise
-        const base64Data = await new Promise<string>((resolve, reject) => {
-          const reader = new FileReader();
-          reader.onloadend = () => {
-            try {
-              const result = reader.result as string;
-              const base64 = result.split(',')[1];
-              resolve(base64);
-            } catch (error) {
-              reject(error);
-            }
-          };
-          reader.onerror = () => reject(reader.error);
-          reader.readAsDataURL(pdfBlob);
-        });
+        // Usar a função centralizada que gera e compartilha (se em ambiente nativo) ou prepara/baixa o PDF
+        // com o nome de arquivo correto formatado (Empresa - OS - Data - Tecnico)
+        const pdfBlob = await generateAndShareServiceOrderPDF(serviceData as any, true);
 
-        // Usar o novo serviço de compartilhamento
-        const success = await fileSharingService.shareFile({
-          filename: `OS_${serviceData.orderNumber}_${serviceData.client?.name ? serviceData.client.name.replace(/[^a-zA-Z0-9\s-]/g, '').trim() : 'Cliente'}_${formattedTime.replace(/:/g, '-').replace(/\//g, '-')}.pdf`,
-          data: base64Data,
-          mimeType: 'application/pdf'
-        });
+        // Se o compartilhamento interno falhar ou não for aplicável (web),
+        // o generateAndShareServiceOrderPDF retorna o blob para que possamos continuar o fluxo (salvar url, etc)
 
-        if (!success) {
-          console.error('Falha no compartilhamento do arquivo');
-          // Não fazer fallback para download, apenas mostrar erro
-          return;
-        }
+
+
 
         // Adicionar à lista de ordens de serviço
         const url = window.URL.createObjectURL(pdfBlob);
@@ -1250,8 +1230,16 @@ function App() {
         const activeOrder = await getActiveServiceOrder();
         if (activeOrder) {
           try {
+            // Preparar dados adicionais para salvar na OS
+            const additionalData = {
+              pdfUrl: url,
+              product: serviceData.product as any, // Ajuste de tipo se necessário
+              observations: observations || "",
+              signatures: serviceData.signatures as any
+            };
+
             // Usar a função finishServiceOrder que faz toda a lógica correta
-            await finishServiceOrder(activeOrder.id);
+            await finishServiceOrder(activeOrder.id, additionalData);
 
             // Disparar evento de finalização com sucesso
             const finishEvent = new CustomEvent('serviceOrderFinished', {
@@ -1295,10 +1283,14 @@ function App() {
     storageService.saveDevices(state.devices);
   }, [state.devices]);
 
+  // COMENTADO PARA EVITAR CONFLITO COM LOCALSTORAGE
+  // O App não deve gerenciar a persistência das ordens se não estiver totalmente sincronizado
+  /*
   useEffect(() => {
     // Salvar service orders quando houver mudanças
     storageService.saveServiceOrders(state.serviceOrders);
   }, [state.serviceOrders]);
+  */
 
   const handlePageChange = useCallback((page: string) => {
     dispatch({ type: 'SET_PAGE', payload: page });

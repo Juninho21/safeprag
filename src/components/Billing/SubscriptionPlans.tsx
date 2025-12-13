@@ -1,8 +1,8 @@
-import React from 'react';
-import { Check, Loader2, Copy } from 'lucide-react';
+import React, { useState, useEffect } from 'react';
+import { useNavigate } from 'react-router-dom';
+import { Check, Loader2, Copy, AlertTriangle } from 'lucide-react';
 import { plansService, Plan } from '../../services/plansService';
 import { useAuth } from '../../contexts/AuthContext';
-import { useState, useEffect } from 'react';
 
 interface PlanProps {
     name: string;
@@ -100,7 +100,8 @@ const PlanCard: React.FC<PlanProps> = ({ name, price, period, features, recommen
 };
 
 export const SubscriptionPlans: React.FC = () => {
-    const { user, subscription } = useAuth();
+    const { user, subscription, role } = useAuth();
+    const navigate = useNavigate();
     const [plans, setPlans] = useState<Plan[]>([]);
     const [loading, setLoading] = useState(true);
     const [paymentData, setPaymentData] = useState<any>(null);
@@ -121,7 +122,11 @@ export const SubscriptionPlans: React.FC = () => {
 
                     if (statusData.status === 'approved') {
                         setPaymentData((prev: any) => ({ ...prev, status: 'approved' }));
-                        // Aqui você pode adicionar lógica extra, como atualizar o status do usuário no contexto
+
+                        // Redirecionar para a agenda após 2 segundos para o usuário ver a confirmação
+                        setTimeout(() => {
+                            navigate('/?tab=schedule');
+                        }, 2000);
                     }
                 } catch (error) {
                     console.error('Erro ao verificar status:', error);
@@ -175,6 +180,32 @@ export const SubscriptionPlans: React.FC = () => {
         return <div className="flex justify-center p-8"><Loader2 className="w-8 h-8 animate-spin text-blue-600" /></div>;
     }
 
+    // Check for expiration
+    let isExpired = false;
+    if (subscription) {
+        if (subscription.status === 'expired' || subscription.status === 'canceled') {
+            isExpired = true;
+        } else if (subscription.endDate) {
+            const now = new Date();
+            let endDate: Date | null = null;
+            if (typeof subscription.endDate.toDate === 'function') {
+                endDate = subscription.endDate.toDate();
+            } else if (subscription.endDate.seconds) {
+                endDate = new Date(subscription.endDate.seconds * 1000);
+            } else {
+                endDate = new Date(subscription.endDate);
+            }
+            if (endDate && endDate < now) {
+                isExpired = true;
+            }
+        }
+    }
+
+    // Super usuários nunca expiram
+    if (role === 'superuser' || user?.email === 'juninhomarinho22@gmail.com') {
+        isExpired = false;
+    }
+
     return (
         <div className="py-8 px-4">
             <div className="text-center mb-12">
@@ -183,7 +214,22 @@ export const SubscriptionPlans: React.FC = () => {
                     Desbloqueie todo o potencial do Safeprag com nossos planos flexíveis.
                 </p>
             </div>
-            {subscription?.status === 'active' && subscription?.endDate?.toDate() > new Date() && (
+
+            {(role === 'superuser' || user?.email === 'juninhomarinho22@gmail.com') && (
+                <div className="bg-indigo-50 border border-indigo-200 text-indigo-800 p-4 mb-8 max-w-6xl mx-auto rounded-lg shadow-sm flex items-center gap-3">
+                    <div className="bg-indigo-100 p-2 rounded-full">
+                        <Check className="w-5 h-5 text-indigo-600" />
+                    </div>
+                    <div>
+                        <p className="font-bold">Acesso Vitalício</p>
+                        <p className="text-sm">
+                            Você possui acesso vitalício ao sistema como Super Usuário.
+                        </p>
+                    </div>
+                </div>
+            )}
+
+            {subscription?.status === 'active' && !isExpired && role !== 'superuser' && (
                 <div className="bg-green-50 border border-green-200 text-green-800 p-4 mb-8 max-w-6xl mx-auto rounded-lg shadow-sm flex items-center gap-3">
                     <div className="bg-green-100 p-2 rounded-full">
                         <Check className="w-5 h-5 text-green-600" />
@@ -197,6 +243,21 @@ export const SubscriptionPlans: React.FC = () => {
                 </div>
             )}
 
+            {isExpired && (
+                <div className="bg-red-50 border border-red-200 text-red-800 p-4 mb-8 max-w-6xl mx-auto rounded-lg shadow-sm flex items-center gap-3">
+                    <div className="bg-red-100 p-2 rounded-full">
+                        <AlertTriangle className="w-5 h-5 text-red-600" />
+                    </div>
+                    <div>
+                        <p className="font-bold">Assinatura Expirada</p>
+                        <p className="text-sm">
+                            Sua assinatura expirou. Escolha um novo plano abaixo para continuar usando o sistema.
+                        </p>
+                    </div>
+                </div>
+            )}
+
+            {/* Mostra os planos para todos, inclusive superusuários */}
             <div className="grid grid-cols-1 md:grid-cols-3 gap-8 max-w-6xl mx-auto items-center">
                 {plans.map((plan) => (
                     <PlanCard
@@ -207,106 +268,102 @@ export const SubscriptionPlans: React.FC = () => {
                         color={plan.color}
                         recommended={plan.recommended}
                         features={plan.features}
-                        isCurrent={subscription?.planId === plan.id && subscription?.status === 'active' && subscription?.endDate?.toDate() > new Date()}
+                        isCurrent={subscription?.planId === plan.id && subscription?.status === 'active' && !isExpired}
                         onSubscribe={() => handleSubscribe(plan)}
                     />
                 ))}
             </div>
 
             {/* Payment Modal */}
-            {
-                paymentData && (
-                    <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
-                        <div className="bg-white rounded-2xl shadow-xl max-w-md w-full p-6 relative flex flex-col items-center">
+            {paymentData && (
+                <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
+                    <div className="bg-white rounded-2xl shadow-xl max-w-md w-full p-6 relative flex flex-col items-center">
 
-                            {/* Header with Plan Info */}
-                            <div className="w-full bg-green-50 rounded-lg p-4 mb-6 text-center">
-                                <h3 className="text-green-800 font-bold text-lg uppercase">{paymentData.description || 'Assinatura Safeprag'}</h3>
-                                <p className="text-green-600 font-semibold text-xl">R$ {paymentData.transaction_amount?.toFixed(2).replace('.', ',')}</p>
-                            </div>
+                        {/* Header with Plan Info */}
+                        <div className="w-full bg-green-50 rounded-lg p-4 mb-6 text-center">
+                            <h3 className="text-green-800 font-bold text-lg uppercase">{paymentData.description || 'Assinatura Safeprag'}</h3>
+                            <p className="text-green-600 font-semibold text-xl">R$ {paymentData.transaction_amount?.toFixed(2).replace('.', ',')}</p>
+                        </div>
 
-                            {/* Success Message if Approved */}
-                            {paymentData.status === 'approved' ? (
-                                <div className="flex flex-col items-center justify-center py-8">
-                                    <div className="w-16 h-16 bg-green-100 rounded-full flex items-center justify-center mb-4">
-                                        <Check className="w-8 h-8 text-green-600" strokeWidth={3} />
-                                    </div>
-                                    <h3 className="text-xl font-bold text-gray-900 mb-2">Pagamento Confirmado!</h3>
-                                    <p className="text-gray-600 text-center mb-6">Sua assinatura foi ativada com sucesso.</p>
-                                    <button
-                                        onClick={() => window.location.reload()}
-                                        className="w-full py-3 bg-green-600 text-white rounded-lg font-bold hover:bg-green-700 transition-colors"
-                                    >
-                                        Fechar e Atualizar
-                                    </button>
+                        {/* Success Message if Approved */}
+                        {paymentData.status === 'approved' ? (
+                            <div className="flex flex-col items-center justify-center py-8">
+                                <div className="w-16 h-16 bg-green-100 rounded-full flex items-center justify-center mb-4">
+                                    <Check className="w-8 h-8 text-green-600" strokeWidth={3} />
                                 </div>
-                            ) : (
-                                <>
-                                    {/* QR Code */}
-                                    <div className="border border-gray-200 rounded-xl p-2 mb-6 shadow-sm">
-                                        {paymentData.point_of_interaction?.transaction_data?.qr_code_base64 ? (
-                                            <img
-                                                src={`data:image/png;base64,${paymentData.point_of_interaction.transaction_data.qr_code_base64}`}
-                                                alt="QR Code PIX"
-                                                className="w-48 h-48 object-contain"
-                                            />
-                                        ) : (
-                                            <div className="w-48 h-48 bg-gray-100 flex items-center justify-center text-gray-400">
-                                                QR Code Indisponível
-                                            </div>
-                                        )}
-                                    </div>
-
-                                    {/* Pix Copia e Cola */}
-                                    <div className="w-full mb-6">
-                                        <label className="block text-center text-sm text-gray-600 mb-2">Pix Copia e Cola</label>
-                                        <div className="flex gap-2">
-                                            <input
-                                                type="text"
-                                                readOnly
-                                                value={paymentData.point_of_interaction?.transaction_data?.qr_code || ''}
-                                                className="flex-1 bg-white border border-gray-300 rounded-lg px-4 py-3 text-sm text-gray-600 font-mono focus:outline-none focus:ring-2 focus:ring-green-500"
-                                            />
-                                            <button
-                                                onClick={() => copyToClipboard(paymentData.point_of_interaction?.transaction_data?.qr_code)}
-                                                className="p-3 bg-white border border-gray-300 rounded-lg hover:bg-gray-50 text-gray-600 transition-colors"
-                                                title="Copiar código"
-                                            >
-                                                <Copy className="w-5 h-5" />
-                                            </button>
+                                <h3 className="text-xl font-bold text-gray-900 mb-2">Pagamento Confirmado!</h3>
+                                <p className="text-gray-600 text-center mb-6">Sua assinatura foi ativada com sucesso.</p>
+                                <button
+                                    onClick={() => setPaymentData(null)}
+                                    className="w-full py-3 bg-green-600 text-white rounded-lg font-bold hover:bg-green-700 transition-colors"
+                                >
+                                    Fechar e Atualizar
+                                </button>
+                            </div>
+                        ) : (
+                            <>
+                                {/* QR Code */}
+                                <div className="border border-gray-200 rounded-xl p-2 mb-6 shadow-sm">
+                                    {paymentData.point_of_interaction?.transaction_data?.qr_code_base64 ? (
+                                        <img
+                                            src={`data:image/png;base64,${paymentData.point_of_interaction.transaction_data.qr_code_base64}`}
+                                            alt="QR Code PIX"
+                                            className="w-48 h-48 object-contain"
+                                        />
+                                    ) : (
+                                        <div className="w-48 h-48 bg-gray-100 flex items-center justify-center text-gray-400">
+                                            QR Code Indisponível
                                         </div>
+                                    )}
+                                </div>
+
+                                {/* Pix Copia e Cola */}
+                                <div className="w-full mb-6">
+                                    <label className="block text-center text-sm text-gray-600 mb-2">Pix Copia e Cola</label>
+                                    <div className="flex gap-2">
+                                        <input
+                                            type="text"
+                                            readOnly
+                                            value={paymentData.point_of_interaction?.transaction_data?.qr_code || ''}
+                                            className="flex-1 bg-white border border-gray-300 rounded-lg px-4 py-3 text-sm text-gray-600 font-mono focus:outline-none focus:ring-2 focus:ring-green-500"
+                                        />
+                                        <button
+                                            onClick={() => copyToClipboard(paymentData.point_of_interaction?.transaction_data?.qr_code)}
+                                            className="p-3 bg-white border border-gray-300 rounded-lg hover:bg-gray-50 text-gray-600 transition-colors"
+                                            title="Copiar código"
+                                        >
+                                            <Copy className="w-5 h-5" />
+                                        </button>
                                     </div>
+                                </div>
 
-                                    {/* Status */}
-                                    <div className="flex items-center gap-2 mb-8">
-                                        <div className="w-2.5 h-2.5 bg-green-500 rounded-full animate-pulse"></div>
-                                        <span className="text-green-600 font-medium text-sm">Aguardando confirmação do pagamento...</span>
-                                    </div>
+                                {/* Status */}
+                                <div className="flex items-center gap-2 mb-8">
+                                    <div className="w-2.5 h-2.5 bg-green-500 rounded-full animate-pulse"></div>
+                                    <span className="text-green-600 font-medium text-sm">Aguardando confirmação do pagamento...</span>
+                                </div>
 
-                                    {/* Back Button */}
-                                    <button
-                                        onClick={() => setPaymentData(null)}
-                                        className="w-full py-3 bg-white border border-gray-300 rounded-lg text-gray-700 font-bold hover:bg-gray-50 transition-colors"
-                                    >
-                                        Voltar
-                                    </button>
-                                </>
-                            )}
-                        </div>
+                                {/* Back Button */}
+                                <button
+                                    onClick={() => setPaymentData(null)}
+                                    className="w-full py-3 bg-white border border-gray-300 rounded-lg text-gray-700 font-bold hover:bg-gray-50 transition-colors"
+                                >
+                                    Voltar
+                                </button>
+                            </>
+                        )}
                     </div>
-                )
-            }
+                </div>
+            )}
 
-            {
-                processing && (
-                    <div className="fixed inset-0 bg-black bg-opacity-25 flex items-center justify-center z-50">
-                        <div className="bg-white p-4 rounded-lg shadow-lg flex items-center gap-3">
-                            <Loader2 className="w-6 h-6 animate-spin text-blue-600" />
-                            <span className="font-medium">Gerando pagamento...</span>
-                        </div>
+            {processing && (
+                <div className="fixed inset-0 bg-black bg-opacity-25 flex items-center justify-center z-50">
+                    <div className="bg-white p-4 rounded-lg shadow-lg flex items-center gap-3">
+                        <Loader2 className="w-6 h-6 animate-spin text-blue-600" />
+                        <span className="font-medium">Gerando pagamento...</span>
                     </div>
-                )
-            }
-        </div >
+                </div>
+            )}
+        </div>
     );
 };

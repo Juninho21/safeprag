@@ -1,6 +1,6 @@
-import React, { useState, useEffect } from 'react';
+import { useState, useEffect } from 'react';
 import { motion } from 'framer-motion';
-import { Calendar, Clock, MapPin, Phone, Mail, User, FileText, Plus, X, Play, Package, Check, ThumbsUp } from 'lucide-react';
+import { Calendar, Clock, MapPin, Phone, User, Plus, X, Play, Package, Check, ThumbsUp } from 'lucide-react';
 import { format } from 'date-fns';
 import { ptBR } from 'date-fns/locale';
 // import { toast } from 'react-toastify';
@@ -9,11 +9,11 @@ import { Schedule } from '../../types/schedule';
 import { schedulingService } from '../../services/schedulingService';
 import { hasActiveSchedule, hasActiveScheduleAsync } from '../../services/ordemServicoService';
 import { NewScheduleModal } from './NewScheduleModal';
-// Removido: import do supabase
 import { generateServiceOrderPDF } from '../../services/pdfService';
 import { activityService } from '../../services/activityService';
 import { ServiceOrderPDFData } from '../../types/pdf.types';
 import * as ordemServicoService from '../../services/ordemServicoService';
+import { getClients } from '../../services/clientStorage';
 import { useAuth } from '../../contexts/AuthContext';
 import { useNavigate } from 'react-router-dom';
 import { SystemMessageBox } from '../../components/SystemMessageBox';
@@ -28,9 +28,8 @@ export function SchedulingPage() {
   const [startTime, setStartTime] = useState<string | null>(null);
   const [filters, setFilters] = useState<SchedulingFilters>({});
   const [isNewScheduleModalOpen, setIsNewScheduleModalOpen] = useState(false);
-  const [hasActiveOS, setHasActiveOS] = useState(false);
   const [checkingActiveOS, setCheckingActiveOS] = useState(false);
-  const [endTime, setEndTime] = useState<string | null>(null);
+
   const [messageOpen, setMessageOpen] = useState(false);
   const [messageConfig, setMessageConfig] = useState<{ title?: string; message: string; variant?: 'warning' | 'error' | 'info'; primaryLabel?: string; onPrimary?: () => void; secondaryLabel?: string; onSecondary?: () => void } | null>(null);
 
@@ -48,7 +47,7 @@ export function SchedulingPage() {
   useEffect(() => {
     const handleScheduleUpdate = (event: CustomEvent) => {
       console.log('Evento scheduleUpdate recebido:', event.detail);
-      const { scheduleId, status, schedule } = event.detail;
+      const { scheduleId, status } = (event as CustomEvent).detail;
 
       console.log('Atualizando agendamento:', { scheduleId, status });
 
@@ -96,19 +95,48 @@ export function SchedulingPage() {
   }
 
   const handleClientClick = async (client: Schedule) => {
+    console.log('🖱️ handleClientClick:', client.clientName, client.status);
+    // Se estiver em andamento, abre direto a atividade (restaurando dados do cliente)
+    if (client.status === 'in_progress') {
+      console.log('🔄 Redirecionando direto para atividade (Status: in_progress)');
+      setIsModalOpen(false); // Força o fechamento do modal
+      try {
+        const allClients = getClients();
+        const fullClientData = allClients.find(c => c.id === client.clientId);
+        if (fullClientData) {
+          localStorage.setItem('selected_client', JSON.stringify(fullClientData));
+          localStorage.setItem('selectedClient', JSON.stringify(fullClientData));
+        }
+
+        // Recupera a OS ativa para este agendamento para restaurar o horário de início
+        const orders = await ordemServicoService.getAllServiceOrders();
+        const activeOrder = orders.find(o => o.scheduleId === client.id && o.status === 'in_progress');
+
+        if (activeOrder) {
+          console.log('Restaurando OS em andamento (Scheduling Page):', activeOrder.id);
+          // Define o horário de início com base na criação da OS ou startTime salvo
+          const startTime = activeOrder.createdAt || activeOrder.startTime || new Date().toISOString();
+          localStorage.setItem('serviceStartTime', startTime);
+        }
+      } catch (err) {
+        console.error('Erro ao salvar dados do cliente para navegação:', err);
+      }
+      setSelectedClient(client);
+      setIsActivityPageOpen(true);
+      return;
+    }
+
     setSelectedClient(client);
     setIsModalOpen(true);
 
     // Verifica assincronamente se há uma OS ativa para este agendamento
     setCheckingActiveOS(true);
     try {
-      const isActive = await hasActiveScheduleAsync(client.id);
-      setHasActiveOS(isActive);
+      await hasActiveScheduleAsync(client.id);
     } catch (error) {
       console.error('Erro ao verificar OS ativa:', error);
       // Fallback para verificação síncrona
-      const isActiveSync = await hasActiveSchedule(client.id);
-      setHasActiveOS(isActiveSync);
+      await hasActiveSchedule(client.id);
     } finally {
       setCheckingActiveOS(false);
     }
@@ -212,9 +240,17 @@ export function SchedulingPage() {
     try {
       const now = new Date();
       const formattedEndTime = format(now, 'HH:mm', { locale: ptBR });
-      setEndTime(formattedEndTime);
 
-      const activeOrder = await activityService.getActiveServiceOrder();
+      // Tenta encontrar a ordem específica para este agendamento
+      const orders = await ordemServicoService.getAllServiceOrders();
+      let activeOrder = orders.find(o => o.scheduleId === selectedClient.id && o.status === 'in_progress');
+
+      // Fallback para comportamento anterior se não encontrar específica
+      if (!activeOrder) {
+        console.warn('OS específica não encontrada, buscando qualquer OS ativa...');
+        activeOrder = await activityService.getActiveServiceOrder();
+      }
+
       if (!activeOrder) {
         throw new Error("Nenhuma ordem de serviço ativa encontrada para finalizar.");
       }
@@ -262,27 +298,40 @@ export function SchedulingPage() {
         },
       };
 
-      await generateServiceOrderPDF(pdfData, companyId || 'default');
+      const pdfBlob = await generateServiceOrderPDF(pdfData, companyId || 'default') as Blob;
 
-      // Atualiza a OS para 'completed'
-      console.log('Atualizando OS para concluído...');
-      const { data: orderData, error: orderError } = await supabase
-        .from('service_orders')
-        .update({ status: 'completed', end_time: new Date().toISOString() })
-        .eq('id', activeOrder.id);
+      // Criar URL para salvar na OS
+      const pdfUrl = window.URL.createObjectURL(pdfBlob);
 
-      console.log('Resultado da atualização da OS:', { orderData, orderError });
-      if (orderError) {
-        throw new Error(`Erro ao atualizar a Ordem de Serviço: ${orderError.message}`);
-      }
+      console.log('Dados para finalização:', {
+        orderId: activeOrder.id,
+        scheduleId: activeOrder.scheduleId,
+        selectedClientId: selectedClient.id
+      });
 
-      // Atualiza o agendamento para 'completed'
-      console.log('Atualizando agendamento para concluído... ID:', activeOrder.schedule_id);
-      await schedulingService.updateScheduleStatus(activeOrder.schedule_id, 'completed');
+      // Atualiza a OS para 'completed' via serviço
+      console.log('Finalizando OS via serviço...');
+      await ordemServicoService.finishServiceOrder(activeOrder.id, {
+        pdfUrl: pdfUrl,
+        observations: activeOrder.observations || "",
+        status: 'completed'
+      });
 
       console.log('Agendamento atualizado para concluído com sucesso');
 
+      // Atualização OTIMISTA da UI para resposta imediata
+      if (selectedClient) {
+        console.log('📍 Atualizando UI otimistamente para concluído:', selectedClient.id);
+        setClients(prev => prev.map(c =>
+          c.id === selectedClient.id
+            ? { ...c, status: 'completed' as const }
+            : c
+        ));
+        setSelectedClient(prev => prev ? { ...prev, status: 'completed' as const } : null);
+      }
+
       activityService.cleanupActivityData(activeOrder.id);
+      localStorage.removeItem('serviceStartTime');
 
       setIsActivityPageOpen(false);
 
@@ -290,7 +339,7 @@ export function SchedulingPage() {
       console.log('Recarregando agendamentos...');
       await loadSchedules();
 
-      console.log('Serviço finalizado com sucesso! O status foi atualizado automaticamente via evento.');
+      console.log('Serviço finalizado com sucesso! O status foi atualizado.');
 
     } catch (error) {
       console.error('Erro ao finalizar serviço:', error);
@@ -470,17 +519,6 @@ export function SchedulingPage() {
                     <Play className="w-5 h-5" />
                     Verificando...
                   </button>
-                ) : (hasActiveOS || selectedClient.status === 'in_progress') ? (
-                  <button
-                    className="w-full px-4 py-3 bg-green-600 text-white rounded-lg hover:bg-green-700 flex items-center justify-center gap-2"
-                    onClick={() => {
-                      setIsModalOpen(false);
-                      setIsActivityPageOpen(true);
-                    }}
-                  >
-                    <Play className="w-5 h-5" />
-                    Continuar
-                  </button>
                 ) : (
                   <button
                     className="w-full px-4 py-3 bg-blue-600 text-white rounded-lg hover:bg-blue-700 flex items-center justify-center gap-2"
@@ -529,6 +567,7 @@ export function SchedulingPage() {
                   <option value="dedetizacao">Dedetização</option>
                   <option value="desratizacao">Desratização</option>
                   <option value="sanitizacao">Sanitização</option>
+                  <option value="implantacao">Implantação</option>
                 </select>
               </div>
 

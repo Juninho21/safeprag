@@ -42,7 +42,7 @@ export async function autoRestoreOnStartup(): Promise<void> {
         const parsed = JSON.parse(schedulesStr);
         hasExistingSchedules = Array.isArray(parsed) && parsed.length > 0;
       }
-    } catch {}
+    } catch { }
 
     const isNative = Capacitor.getPlatform() !== 'web';
 
@@ -63,7 +63,7 @@ export async function autoRestoreOnStartup(): Promise<void> {
               delete jsonLatest.data[STORAGE_KEYS.SCHEDULES];
               console.log('[AutoRestore] Mantendo agendamentos locais (mobile).');
             }
-            const resultLatest = restoreBackup(jsonLatest as BackupData);
+            const resultLatest = await restoreBackup(jsonLatest as BackupData, true);
             if (resultLatest.success) {
               localStorage.setItem(INIT_FLAG_KEY, 'true');
               console.log('[AutoRestore] (Mobile) Restaurado via Filesystem: latest-backup.json');
@@ -101,7 +101,7 @@ export async function autoRestoreOnStartup(): Promise<void> {
             delete jsonLatest.data[STORAGE_KEYS.SCHEDULES];
             console.log('[AutoRestore] Mantendo agendamentos locais (web).');
           }
-          const resultLatest = restoreBackup(jsonLatest as BackupData);
+          const resultLatest = await restoreBackup(jsonLatest as BackupData, true);
           if (resultLatest.success) {
             localStorage.setItem(INIT_FLAG_KEY, 'true');
             console.log(`[AutoRestore] Restored ${resultLatest.restored} items from ${latestPath}.`);

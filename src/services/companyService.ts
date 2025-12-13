@@ -199,5 +199,4 @@ export const linkUserToCompany = async (userId: string, companyId: string): Prom
     throw error;
   }
 };
-
 // Função de delete removida - não permitimos deletar empresas através do serviço do frontend

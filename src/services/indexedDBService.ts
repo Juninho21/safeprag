@@ -11,6 +11,7 @@ interface PDFStorageItem {
   clientCode?: string;
   services?: any[];
   technicianName?: string;
+  serviceDate?: string;
 }
 
 class IndexedDBService {

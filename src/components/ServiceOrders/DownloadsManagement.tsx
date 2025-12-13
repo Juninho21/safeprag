@@ -2,7 +2,6 @@ import React, { useState, useEffect } from 'react';
 import { Button } from '../ui/button';
 import { Input } from '../ui/input';
 import { getAllStoredPDFs } from '../../services/pdfService';
-import { Capacitor } from '@capacitor/core';
 import { Download, Search, X, Calendar, User, FileText, Filter } from 'lucide-react';
 import { useAuth } from '../../contexts/AuthContext';
 import { storageService } from '../../services/storageService';
@@ -198,104 +197,16 @@ const DownloadsManagement: React.FC = () => {
     }
 
     try {
-      console.log('🔽 Iniciando download para OS:', orderNumber);
-      const platform = Capacitor.getPlatform();
-      console.log('📱 Plataforma detectada:', platform);
+      console.log('🔽 Iniciando download para OS via Serviço:', orderNumber);
 
-      // Importa o indexedDBService
-      const { indexedDBService } = await import('../../services/indexedDBService');
+      // Importa dinamicamente para evitar ciclos se houver
+      const { downloadPDFFromStorage } = await import('../../services/pdfService');
+      await downloadPDFFromStorage(orderNumber);
 
-      // Inicializa o IndexedDB
-      await indexedDBService.initDB();
-
-      // Busca o PDF do IndexedDB
-      const pdfData = await indexedDBService.getPDF(orderNumber);
-
-      if (!pdfData || !pdfData.pdf) {
-        console.error('❌ PDF não encontrado para a OS:', orderNumber);
-        alert('PDF não encontrado. Tente gerar o relatório novamente.');
-        return;
-      }
-
-      console.log('✅ PDF encontrado:', { orderNumber, clientName: pdfData.clientName });
-
-      // Detecta se é mobile ou desktop
-      const isMobile = platform === 'android' || platform === 'ios';
-
-      if (isMobile) {
-        // Mobile: Usa o serviço de compartilhamento
-        console.log('📱 Modo Mobile: Usando compartilhamento');
-        try {
-          const { fileSharingService } = await import('../../services/fileSharingService');
-          const dateObj = pdfData.createdAt ? new Date(pdfData.createdAt) : new Date();
-          const dateStr = dateObj.toLocaleDateString('pt-BR').replace(/\//g, '-');
-          const timeStr = dateObj.toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' }).replace(/:/g, '-');
-          const sanitizedClientName = pdfData.clientName ? pdfData.clientName.replace(/[^a-zA-Z0-9\s-]/g, '').trim() : 'Cliente';
-
-          const success = await fileSharingService.shareFile({
-            filename: `OS_${orderNumber}_${sanitizedClientName}_${dateStr}_${timeStr}.pdf`,
-            data: pdfData.pdf,
-            mimeType: 'application/pdf'
-          });
-
-          if (success) {
-            console.log('✅ Compartilhamento realizado com sucesso');
-          } else {
-            console.error('❌ Falha ao compartilhar arquivo');
-            alert('Erro ao compartilhar PDF. Tente novamente.');
-          }
-        } catch (error) {
-          console.error('❌ Erro no compartilhamento mobile:', error);
-          alert('Erro ao compartilhar PDF. Tente novamente.');
-        }
-      } else {
-        // Desktop/Web: Download direto
-        console.log('💻 Modo Desktop: Fazendo download direto');
-        try {
-          // Converte base64 para Blob
-          const base64Data = pdfData.pdf;
-          const byteCharacters = atob(base64Data);
-          const byteNumbers = new Array(byteCharacters.length);
-
-          for (let i = 0; i < byteCharacters.length; i++) {
-            byteNumbers[i] = byteCharacters.charCodeAt(i);
-          }
-
-          const byteArray = new Uint8Array(byteNumbers);
-          const blob = new Blob([byteArray], { type: 'application/pdf' });
-
-          // Cria link de download
-          const url = URL.createObjectURL(blob);
-          const link = document.createElement('a');
-          const dateObj = pdfData.createdAt ? new Date(pdfData.createdAt) : new Date();
-          const dateStr = dateObj.toLocaleDateString('pt-BR').replace(/\//g, '-');
-          const timeStr = dateObj.toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' }).replace(/:/g, '-');
-          const sanitizedClientName = pdfData.clientName ? pdfData.clientName.replace(/[^a-zA-Z0-9\s-]/g, '').trim() : 'Cliente';
-
-          const fileName = `OS_${orderNumber}_${sanitizedClientName}_${dateStr}_${timeStr}.pdf`;
-
-          link.href = url;
-          link.download = fileName;
-          link.style.display = 'none';
-
-          document.body.appendChild(link);
-          link.click();
-
-          // Cleanup
-          setTimeout(() => {
-            document.body.removeChild(link);
-            URL.revokeObjectURL(url);
-          }, 100);
-
-          console.log('✅ Download concluído:', fileName);
-        } catch (downloadError) {
-          console.error('❌ Erro no download direto:', downloadError);
-          alert('Erro ao fazer download do PDF. Tente novamente.');
-        }
-      }
+      console.log('✅ Download/Compartilhamento iniciado com sucesso');
     } catch (error) {
       console.error('❌ Erro geral ao processar PDF:', error);
-      alert('Erro ao processar PDF. Verifique se o PDF foi gerado corretamente.');
+      alert('Erro ao processar PDF. Tente novamente.');
     }
   };
 

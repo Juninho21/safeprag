@@ -19,5 +19,6 @@ export const STATUS_TYPES = [
   'Atrativo biológico substituído',
   'Desarmada',
   'Desligada',
-  'Praga encontrada'
+  'Praga encontrada',
+  'Novo Dispositivo'
 ] as const;

@@ -1,4 +1,4 @@
-interface Client {
+export interface Client {
   id?: string;
   code: string;
   branch: string;
@@ -31,7 +31,7 @@ export const getNextClientCode = (): string => {
 export const addClient = async (client: Omit<Client, 'id' | 'code'>): Promise<Client> => {
   const clients = getClients();
   const code = getNextClientCode();
-  
+
   const newClient: Client = {
     ...client,
     id: Date.now().toString(),
@@ -41,7 +41,7 @@ export const addClient = async (client: Omit<Client, 'id' | 'code'>): Promise<Cl
   };
 
   // Cliente adicionado com sucesso
-  
+
   clients.push(newClient);
   localStorage.setItem(CLIENTS_STORAGE_KEY, JSON.stringify(clients));
   return newClient;
@@ -59,9 +59,9 @@ export const getClients = (): Client[] => {
 export const searchClients = (searchTerm: string): Client[] => {
   const clients = getClients();
   if (!searchTerm) return clients;
-  
+
   const term = searchTerm.toLowerCase();
-  return clients.filter(client => 
+  return clients.filter(client =>
     client.code.toLowerCase().includes(term) ||
     client.name.toLowerCase().includes(term) ||
     client.document.toLowerCase().includes(term)
@@ -72,21 +72,21 @@ export const searchClients = (searchTerm: string): Client[] => {
 export const updateClient = async (updatedClient: Client): Promise<Client> => {
   const clients = getClients();
   const index = clients.findIndex(c => c.id === updatedClient.id);
-  
+
   if (index === -1) {
     throw new Error('Cliente não encontrado');
   }
-  
+
   // Mantém o código original e atualiza a data de modificação
   const clientToUpdate = {
     ...updatedClient,
     code: clients[index].code,
     updatedAt: new Date()
   };
-  
+
   clients[index] = clientToUpdate;
   localStorage.setItem(CLIENTS_STORAGE_KEY, JSON.stringify(clients));
-  
+
   return clientToUpdate;
 };
 
@@ -94,9 +94,9 @@ export const updateClient = async (updatedClient: Client): Promise<Client> => {
 export const deleteClient = async (clientId: string): Promise<boolean> => {
   const clients = getClients();
   const filteredClients = clients.filter(c => c.id !== clientId);
-  
+
   if (filteredClients.length === clients.length) return false;
-  
+
   localStorage.setItem(CLIENTS_STORAGE_KEY, JSON.stringify(filteredClients));
   return true;
 };
