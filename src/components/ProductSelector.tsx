@@ -17,9 +17,16 @@ export const ProductSelector: React.FC<ProductSelectorProps> = ({ onProductSelec
     const loadProducts = () => {
       try {
         const productsJson = localStorage.getItem(STORAGE_KEYS.PRODUCTS);
+        console.log('Carregando produtos do localStorage. Key:', STORAGE_KEYS.PRODUCTS);
+        console.log('Conteúdo raw:', productsJson);
+        
         if (productsJson) {
           const products: Product[] = JSON.parse(productsJson);
+          console.log('Produtos parseados:', products);
           setProducts(products);
+        } else {
+          console.log('Nenhum produto encontrado no localStorage');
+          setProducts([]);
         }
       } catch (error) {
         console.error('Erro ao carregar produtos do localStorage:', error);
@@ -64,7 +71,8 @@ export const ProductSelector: React.FC<ProductSelectorProps> = ({ onProductSelec
         <div className="absolute z-50 mt-2 w-full bg-white rounded-lg shadow-lg border border-gray-200 max-h-96 overflow-y-auto">
           {products.length === 0 ? (
             <div className="p-4 text-gray-500 text-center">
-              Nenhum produto cadastrado
+              <p>Nenhum produto cadastrado.</p>
+              <p className="text-sm mt-1">Vá em Configurações &gt; Produtos para cadastrar.</p>
             </div>
           ) : (
             <div className="divide-y divide-gray-100">

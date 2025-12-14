@@ -67,6 +67,18 @@ export const getServiceOrders = async (): Promise<ServiceOrder[]> => {
 export const getActiveServiceOrder = async (): Promise<ServiceOrder | null> => {
   try {
     const orders = await getAllServiceOrders();
+    
+    // Tentar buscar por ID específico primeiro (definido ao clicar no card ou iniciar OS)
+    const specificId = localStorage.getItem('activeServiceOrderId');
+    if (specificId) {
+      const specificOrder = orders.find(order => order.id === specificId && order.status === 'in_progress');
+      if (specificOrder) {
+        console.log('Ordem ativa recuperada por ID específico:', specificId);
+        return specificOrder;
+      }
+    }
+
+    // Fallback: buscar a primeira OS em andamento (comportamento anterior)
     const activeOrder = orders.find(order => order.status === 'in_progress');
     return activeOrder || null;
   } catch (error) {
@@ -157,6 +169,8 @@ export async function createServiceOrder(schedule: Schedule, companyId: string):
 
     // Salva horário de início
     localStorage.setItem('serviceStartTime', now.toISOString());
+    // Define esta OS como a ativa
+    localStorage.setItem('activeServiceOrderId', newOrder.id);
 
     // Limpa dados temporários
     localStorage.removeItem('pestCounts');
@@ -258,6 +272,7 @@ export async function finishServiceOrder(orderId: string, additionalData?: Parti
 
     // Atualiza o agendamento
     if (order.scheduleId) {
+      console.log('🔗 Vinculando finalização ao agendamento:', order.scheduleId);
       try {
         const { schedulingService } = await import('./schedulingService');
         await schedulingService.updateScheduleStatus(order.scheduleId, 'completed');
@@ -271,9 +286,12 @@ export async function finishServiceOrder(orderId: string, additionalData?: Parti
           }
         });
         window.dispatchEvent(updateEvent);
+        console.log('✅ Evento scheduleUpdate disparado para:', order.scheduleId);
       } catch (error) {
         console.error('Erro ao atualizar agendamento:', error);
       }
+    } else {
+      console.warn('⚠️ Ordem de serviço sem scheduleId vinculado:', order.id);
     }
 
     // Gera e compartilha o PDF
@@ -288,6 +306,7 @@ export async function finishServiceOrder(orderId: string, additionalData?: Parti
 
     // Limpa dados temporários
     localStorage.removeItem('serviceStartTime');
+    localStorage.removeItem('activeServiceOrderId');
     localStorage.removeItem('pestCounts');
     localStorage.removeItem('currentServiceOrder');
     localStorage.removeItem('activeServiceOrder');

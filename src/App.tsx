@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useReducer, useRef, useCallback } from 'react';
-import { useLocation } from 'react-router-dom';
+import { useLocation, useNavigate } from 'react-router-dom';
 import {
   Calendar,
   Settings,
@@ -368,6 +368,7 @@ interface ServiceDataForPDF {
 
 function App() {
   const routerLocation = useLocation();
+  const navigate = useNavigate();
   const [activeTab, setActiveTab] = useState('schedule');
   const { role, user } = useAuth();
   const [state, dispatch] = useReducer(reducer, initialState);
@@ -1241,11 +1242,31 @@ function App() {
             // Usar a função finishServiceOrder que faz toda a lógica correta
             await finishServiceOrder(activeOrder.id, additionalData);
 
+            console.log('Ordem finalizada. Disparando eventos...');
+
             // Disparar evento de finalização com sucesso
             const finishEvent = new CustomEvent('serviceOrderFinished', {
-              detail: { success: true }
+              detail: { 
+                success: true, 
+                scheduleId: activeOrder.scheduleId,
+                orderId: activeOrder.id
+              }
             });
             window.dispatchEvent(finishEvent);
+            console.log('Evento serviceOrderFinished disparado:', finishEvent.detail);
+
+            if (activeOrder.scheduleId) {
+               const scheduleUpdateEvent = new CustomEvent('scheduleUpdate', {
+                 detail: {
+                   scheduleId: activeOrder.scheduleId,
+                   status: 'completed',
+                   timestamp: new Date().toISOString()
+                 }
+               });
+               window.dispatchEvent(scheduleUpdateEvent);
+               console.log('Evento scheduleUpdate manual disparado do App:', scheduleUpdateEvent.detail);
+            }
+
           } catch (error) {
             console.error('Erro ao finalizar ordem de serviço:', error);
             // showNotification('Erro ao finalizar ordem de serviço. Tente novamente.', 'error');
@@ -1253,7 +1274,7 @@ function App() {
           }
         }
 
-        setActiveTab('schedule');
+        handleTabChange('schedule');
       } catch (pdfError) {
         console.error('Erro ao gerar PDF:', pdfError);
         // showNotification('Erro ao gerar o PDF. Verifique os dados e tente novamente.', 'error');
@@ -1553,7 +1574,7 @@ function App() {
       const defaultTab = role === 'cliente' ? 'downloads' : (role === 'controlador' ? 'schedule' : 'schedule');
       setActiveTab(defaultTab);
     }
-  }, [role]);
+  }, [role, activeTab]);
 
   useEffect(() => {
     const params = new URLSearchParams(routerLocation.search || '');
@@ -1590,7 +1611,16 @@ function App() {
   };
 
   const handleTabChange = (tab: string) => {
-    setActiveTab(tab);
+    // Atualizar URL para sincronizar com Layout e evitar conflito de navegação
+    if (tab === 'schedule') navigate('/?tab=schedule');
+    else if (tab === 'activity') navigate('/?tab=activity');
+    else if (tab === 'downloads') navigate('/downloads');
+    else if (tab === 'settings') navigate('/configuracoes');
+    else if (tab === 'superuser') navigate('/superuser');
+    else navigate(`/?tab=${tab}`);
+
+    // Nota: setActiveTab será chamado pelo useEffect que monitora routerLocation.search
+    
     if (tab === 'activity') {
       const startTimeStr = localStorage.getItem('serviceStartTime');
       if (startTimeStr) {
@@ -1697,11 +1727,7 @@ function App() {
       </div>
 
       {/* Notificações removidas */}
-      <BottomNavBar
-        activeTab={activeTab}
-        onTabChange={handleTabChange}
-        items={navItems}
-      />
+      {/* BottomNavBar removida pois já existe no Layout principal */}
       <ApprovalModal
         isOpen={showApprovalModal}
         onClose={() => setShowApprovalModal(false)}

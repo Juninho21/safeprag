@@ -169,6 +169,9 @@ export const ScheduleList: React.FC<ScheduleListProps> = ({
 
         if (activeOrder) {
           console.log('Restaurando OS em andamento:', activeOrder.id);
+          // Define o ID da OS ativa explicitamente para evitar ambiguidade
+          localStorage.setItem('activeServiceOrderId', activeOrder.id);
+          
           // Define o horário de início com base na criação da OS ou startTime salvo
           const startTime = activeOrder.createdAt || activeOrder.startTime || new Date().toISOString();
           localStorage.setItem('serviceStartTime', startTime);

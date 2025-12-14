@@ -92,10 +92,18 @@ const ServiceActivity: React.FC<ServiceActivityProps> = ({
   // Adicionar log para debug dos valores
   console.log('Valor atual de serviceType:', serviceType);
 
-  const isTreatmentService = ['pulverizacao', 'atomizacao', 'termonebulizacao', 'polvilhamento', 'iscagem_com_gel'].includes(serviceType.toLowerCase());
-  const showProductSelector = isTreatmentService || serviceType.toLowerCase() === 'monitoramento';
+  const normalizeString = (str: string) => {
+    return str.toLowerCase()
+      .normalize("NFD").replace(/[\u0300-\u036f]/g, "") // Remove acentos
+      .replace(/ /g, '_'); // Substitui espaços por underline (opcional, mas consistente com o select)
+  };
+
+  const normalizedServiceType = normalizeString(serviceType);
+  const isTreatmentService = ['pulverizacao', 'atomizacao', 'termonebulizacao', 'polvilhamento', 'iscagem_com_gel', 'iscagem_gel'].includes(normalizedServiceType);
+  const showProductSelector = isTreatmentService || normalizedServiceType === 'monitoramento';
 
   // Adicionar logs para debug
+  console.log('Normalized Service Type:', normalizedServiceType);
   console.log('isTreatmentService:', isTreatmentService);
   console.log('showProductSelector:', showProductSelector);
   console.log('Lista de serviços de tratamento:', ['pulverizacao', 'atomizacao', 'termonebulizacao', 'polvilhamento', 'iscagem_com_gel']);
@@ -512,11 +520,17 @@ const ServiceActivity: React.FC<ServiceActivityProps> = ({
     };
 
     const handleServiceOrderFinished = (event: CustomEvent) => {
-      // Só recarrega a página se não for uma OS retroativa
+      // Só limpa o estado se não for uma OS retroativa
       if (event.detail?.success && !event.detail?.isRetroactive) {
+        console.log('ServiceActivity: OS finalizada, limpando estado local');
         setPestCounts([]);
-        // Dados agora são gerenciados pelo Supabase
-        window.location.reload();
+        // Não recarregar a página, deixar o fluxo de navegação cuidar disso
+        // window.location.reload(); 
+        
+        // Limpar dados locais
+        setServiceList([]);
+        setCurrentServiceId(null);
+        setLocalStartTime(null);
       }
     };
 
