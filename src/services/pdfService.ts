@@ -930,7 +930,7 @@ export const generateServiceOrderPDF = async (
           <td style="width: 50%; line-height: 1.3;">
             <div>Código Do Cliente: ${finalClientData?.code || finalClientData?.id || ''}</div>
             <div>Razão Social: ${finalClientData?.razaoSocial || finalClientData?.branch || finalClientData?.name || ''}</div>
-            <div>Nome Fantasia: ${finalClientData?.nomeFantasia || finalClientData?.fantasyName || ''}</div>
+            <div>Nome: ${finalClientData?.nomeFantasia || finalClientData?.fantasyName || ''}</div>
             <div>CNPJ/CPF: ${finalClientData?.cnpj || finalClientData?.document || ''}</div>
             <div>Cidade: ${finalClientData?.cidade || finalClientData?.city || ''}</div>
           </td>

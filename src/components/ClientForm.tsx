@@ -260,7 +260,7 @@ export const ClientForm: React.FC = () => {
                   <input type="text" name="branch" value={client.branch} onChange={handleChange} className="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-blue-500 focus:ring-blue-500" />
                 </div>
                 <div>
-                  <label className="block text-sm font-medium text-gray-700">Nome Fantasia</label>
+                  <label className="block text-sm font-medium text-gray-700">Nome</label>
                   <input type="text" name="name" value={client.name} onChange={handleChange} className="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-blue-500 focus:ring-blue-500" />
                 </div>
                 <div>
@@ -329,7 +329,7 @@ export const ClientForm: React.FC = () => {
                     </div>
                   </div>
                   <div className="text-sm text-gray-600 grid grid-cols-1 sm:grid-cols-2 gap-2">
-                    <p><span className="font-medium">Nome Fantasia:</span> {client.name}</p>
+                    <p><span className="font-medium">Nome:</span> {client.name}</p>
                     <p><span className="font-medium">CNPJ/CPF:</span> {client.cnpj}</p>
                     <p><span className="font-medium">Contato:</span> {client.contact}</p>
                     <p><span className="font-medium">Telefone:</span> {client.phone}</p>
