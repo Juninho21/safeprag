@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useReducer, useRef, useCallback } from 'react';
-import { useLocation } from 'react-router-dom';
+import { useLocation, useNavigate } from 'react-router-dom';
 import {
   Calendar,
   Settings,
@@ -368,6 +368,7 @@ interface ServiceDataForPDF {
 
 function App() {
   const routerLocation = useLocation();
+  const navigate = useNavigate();
   const [activeTab, setActiveTab] = useState('schedule');
   const { role, user } = useAuth();
   const [state, dispatch] = useReducer(reducer, initialState);
@@ -1253,7 +1254,7 @@ function App() {
           }
         }
 
-        setActiveTab('schedule');
+        handleTabChange('schedule');
       } catch (pdfError) {
         console.error('Erro ao gerar PDF:', pdfError);
         // showNotification('Erro ao gerar o PDF. Verifique os dados e tente novamente.', 'error');
@@ -1553,7 +1554,7 @@ function App() {
       const defaultTab = role === 'cliente' ? 'downloads' : (role === 'controlador' ? 'schedule' : 'schedule');
       setActiveTab(defaultTab);
     }
-  }, [role]);
+  }, [role, activeTab]);
 
   useEffect(() => {
     const params = new URLSearchParams(routerLocation.search || '');
@@ -1590,7 +1591,16 @@ function App() {
   };
 
   const handleTabChange = (tab: string) => {
-    setActiveTab(tab);
+    // Atualizar URL para sincronizar com Layout e evitar conflito de navegação
+    if (tab === 'schedule') navigate('/?tab=schedule');
+    else if (tab === 'activity') navigate('/?tab=activity');
+    else if (tab === 'downloads') navigate('/downloads');
+    else if (tab === 'settings') navigate('/configuracoes');
+    else if (tab === 'superuser') navigate('/superuser');
+    else navigate(`/?tab=${tab}`);
+
+    // Nota: setActiveTab será chamado pelo useEffect que monitora routerLocation.search
+    
     if (tab === 'activity') {
       const startTimeStr = localStorage.getItem('serviceStartTime');
       if (startTimeStr) {
@@ -1697,11 +1707,7 @@ function App() {
       </div>
 
       {/* Notificações removidas */}
-      <BottomNavBar
-        activeTab={activeTab}
-        onTabChange={handleTabChange}
-        items={navItems}
-      />
+      {/* BottomNavBar removida pois já existe no Layout principal */}
       <ApprovalModal
         isOpen={showApprovalModal}
         onClose={() => setShowApprovalModal(false)}

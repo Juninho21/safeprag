@@ -383,16 +383,9 @@ app.post('/create-payment', requireAuth, express.json(), async (req, res) => {
             return res.status(400).json({ error: 'Dados incompletos para pagamento' });
         }
 
-        // 1. Buscar Access Token do Firestore
-        const configDoc = await db.collection('system_config').doc('mercadopago').get();
-        if (!configDoc.exists) {
-            return res.status(500).json({ error: 'Configuração de pagamento não encontrada no sistema' });
-        }
-        const accessToken = configDoc.data().accessToken;
+        // 1. Definição do Access Token (Hardcoded para correção imediata)
+        const accessToken = 'APP_USR-1133493405797523-122814-00b3cf935e9248129208a3ed9450c2cd-3017871863';
 
-        if (!accessToken) {
-            return res.status(500).json({ error: 'Access Token do Mercado Pago não configurado' });
-        }
 
         // 2. Criar preferência/pagamento no Mercado Pago
         const paymentData = {
@@ -443,16 +436,9 @@ app.get('/check-payment/:id', requireAuth, async (req, res) => {
             return res.status(400).json({ error: 'ID do pagamento obrigatório' });
         }
 
-        // 1. Buscar Access Token do Firestore
-        const configDoc = await db.collection('system_config').doc('mercadopago').get();
-        if (!configDoc.exists) {
-            return res.status(500).json({ error: 'Configuração de pagamento não encontrada' });
-        }
-        const accessToken = configDoc.data().accessToken;
+        // 1. Definição do Access Token (Hardcoded para correção imediata)
+        const accessToken = 'APP_USR-1133493405797523-122814-00b3cf935e9248129208a3ed9450c2cd-3017871863';
 
-        if (!accessToken) {
-            return res.status(500).json({ error: 'Access Token não configurado' });
-        }
 
         // 2. Consultar status no Mercado Pago
         const response = await fetch(`https://api.mercadopago.com/v1/payments/${id}`, {
@@ -502,13 +488,9 @@ app.post('/mercadopago-webhook', async (req, res) => {
             return res.status(200).send('OK');
         }
 
-        // 1. Buscar Access Token
-        const configDoc = await db.collection('system_config').doc('mercadopago').get();
-        if (!configDoc.exists) {
-            console.error('[Webhook] Configuração MP não encontrada');
-            return res.status(200).send('Config missing');
-        }
-        const accessToken = configDoc.data().accessToken;
+        // 1. Definição do Access Token (Hardcoded para correção imediata)
+        const accessToken = 'APP_USR-1133493405797523-122814-00b3cf935e9248129208a3ed9450c2cd-3017871863';
+
 
         // 2. Consultar Pagamento no MP
         const response = await fetch(`https://api.mercadopago.com/v1/payments/${paymentId}`, {

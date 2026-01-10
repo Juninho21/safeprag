@@ -258,6 +258,7 @@ export async function finishServiceOrder(orderId: string, additionalData?: Parti
 
     // Atualiza o agendamento
     if (order.scheduleId) {
+      console.log('🔗 Vinculando finalização ao agendamento:', order.scheduleId);
       try {
         const { schedulingService } = await import('./schedulingService');
         await schedulingService.updateScheduleStatus(order.scheduleId, 'completed');
@@ -271,9 +272,12 @@ export async function finishServiceOrder(orderId: string, additionalData?: Parti
           }
         });
         window.dispatchEvent(updateEvent);
+        console.log('✅ Evento scheduleUpdate disparado para:', order.scheduleId);
       } catch (error) {
         console.error('Erro ao atualizar agendamento:', error);
       }
+    } else {
+      console.warn('⚠️ Ordem de serviço sem scheduleId vinculado:', order.id);
     }
 
     // Gera e compartilha o PDF
