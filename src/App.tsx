@@ -1534,6 +1534,9 @@ function App() {
 
   // Define itens permitidos por papel
   const allowedIdsByRole: Record<string, string[]> = {
+    owner: ['schedule', 'activity', 'downloads', 'settings', 'superuser'],
+    superuser: ['schedule', 'activity', 'downloads', 'settings', 'superuser'],
+    suporte: ['schedule', 'activity', 'downloads', 'settings', 'superuser'],
     admin: ['schedule', 'activity', 'downloads', 'settings'],
     controlador: ['schedule', 'activity', 'downloads'],
     cliente: ['downloads']
@@ -1541,9 +1544,11 @@ function App() {
 
   let allowedIds = allowedIdsByRole[role || 'cliente'] || ['downloads'];
 
-  // Super User Check
+  // Super User Check (legacy/redundant if role is set correctly, but kept for safety)
   if (user?.email === 'juninhomarinho22@gmail.com') {
-    allowedIds = [...allowedIds, 'superuser'];
+    if (!allowedIds.includes('superuser')) {
+      allowedIds = [...allowedIds, 'superuser'];
+    }
   }
   const navItems = allItems.filter(item => allowedIds.includes(item.id));
 
@@ -1551,7 +1556,7 @@ function App() {
   useEffect(() => {
     if (!allowedIds.includes(activeTab)) {
       // Define aba padrão por papel
-      const defaultTab = role === 'cliente' ? 'downloads' : (role === 'controlador' ? 'schedule' : 'schedule');
+      const defaultTab = role === 'cliente' ? 'downloads' : 'schedule';
       setActiveTab(defaultTab);
     }
   }, [role, activeTab]);
@@ -1559,11 +1564,12 @@ function App() {
   useEffect(() => {
     const params = new URLSearchParams(routerLocation.search || '');
     const tab = params.get('tab');
-    if (tab === 'activity') setActiveTab('activity');
-    else if (tab === 'schedule') setActiveTab('schedule');
-    else if (tab === 'downloads') setActiveTab('downloads');
-    else if (tab === 'settings') setActiveTab('settings');
-  }, [routerLocation.search]);
+    if (tab === 'activity' && allowedIds.includes('activity')) setActiveTab('activity');
+    else if (tab === 'schedule' && allowedIds.includes('schedule')) setActiveTab('schedule');
+    else if (tab === 'downloads' && allowedIds.includes('downloads')) setActiveTab('downloads');
+    else if (tab === 'settings' && allowedIds.includes('settings')) setActiveTab('settings');
+    else if (tab === 'superuser' && allowedIds.includes('superuser')) setActiveTab('superuser');
+  }, [routerLocation.search, allowedIds]);
 
   const getActiveServiceOrder = () => {
     const savedOrders = localStorage.getItem('safeprag_service_orders');
@@ -1600,7 +1606,7 @@ function App() {
     else navigate(`/?tab=${tab}`);
 
     // Nota: setActiveTab será chamado pelo useEffect que monitora routerLocation.search
-    
+
     if (tab === 'activity') {
       const startTimeStr = localStorage.getItem('serviceStartTime');
       if (startTimeStr) {
@@ -1631,7 +1637,7 @@ function App() {
     <KeepAliveProvider>
       <div className="flex flex-col h-screen bg-gray-100">
         {activeTab === 'schedule' && (
-          <RequireRole allow={["admin", "controlador"]}>
+          <RequireRole allow={["admin", "controlador", "owner", "superuser", "suporte"]}>
             <ServiceScheduler
               onTabChange={handleTabChange}
               onOSStart={() => handleTabChange('activity')}
@@ -1639,7 +1645,7 @@ function App() {
           </RequireRole>
         )}
         {activeTab === 'activity' && (
-          <RequireRole allow={["admin", "controlador"]}>
+          <RequireRole allow={["admin", "controlador", "owner", "superuser", "suporte"]}>
             <ServiceActivity
               serviceType={serviceType}
               targetPest={targetPest}
@@ -1690,14 +1696,14 @@ function App() {
           </RequireRole>
         )}
         {activeTab === 'downloads' && (
-          <RequireRole allow={["admin", "controlador", "cliente"]}>
+          <RequireRole allow={["admin", "controlador", "cliente", "owner", "superuser", "suporte"]}>
             <div className="px-4 py-6">
               <DownloadsManagement />
             </div>
           </RequireRole>
         )}
         {activeTab === 'settings' && (
-          <RequireRole allow={["admin"]}>
+          <RequireRole allow={["admin", "owner", "superuser", "suporte"]}>
             <AdminPage />
           </RequireRole>
         )}

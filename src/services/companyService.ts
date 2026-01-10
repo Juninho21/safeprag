@@ -1,6 +1,6 @@
 import { doc, getDoc, setDoc, serverTimestamp } from 'firebase/firestore';
 import { ref, uploadBytes, getDownloadURL } from 'firebase/storage';
-import { db, storage } from '../config/firebase';
+import { db, storage, auth } from '../config/firebase';
 import type { Company } from '../types/company.types';
 
 /**
@@ -35,6 +35,14 @@ export const saveCompany = async (
   logoFile?: File | null
 ): Promise<void> => {
   try {
+    // Verificar autenticação antes de tentar salvar
+    if (!auth.currentUser) {
+      console.error('Tentativa de salvar empresa sem usuário autenticado!');
+      throw new Error('Usuário não autenticado. Por favor, faça login novamente.');
+    }
+
+    console.log(`Tentando salvar empresa ${companyId} pelo usuário ${auth.currentUser.uid}`);
+
     let updateData: any = { ...data };
 
     // Upload de logo se fornecido
@@ -48,6 +56,7 @@ export const saveCompany = async (
     const docRef = doc(db, 'companies', companyId);
     // Use setDoc com merge: true para criar se não existir ou atualizar se existir
     await setDoc(docRef, updateData, { merge: true });
+    console.log(`Empresa ${companyId} salva com sucesso!`);
   } catch (error) {
     console.error('Erro ao atualizar empresa:', error);
     throw error;

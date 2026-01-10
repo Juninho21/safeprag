@@ -15,6 +15,27 @@ const app = express();
 // Configuração do CORS
 app.use(cors({ origin: true }));
 
+// Função para configurar CORS no Storage
+app.get('/admin/setup-cors', async (req, res) => {
+    try {
+        const bucket = admin.storage().bucket('safeprag-0825.firebasestorage.app');
+
+        await bucket.setCorsConfiguration([
+            {
+                "origin": ["*"],
+                "method": ["GET", "HEAD", "PUT", "POST", "DELETE", "OPTIONS"],
+                "maxAgeSeconds": 3600
+            }
+        ]);
+
+        console.log('CORS configurado com sucesso para o bucket');
+        res.json({ success: true, message: 'CORS configurado com sucesso!' });
+    } catch (error) {
+        console.error('Erro ao configurar CORS:', error);
+        res.status(500).json({ error: error.message });
+    }
+});
+
 // Configuração do Stripe
 const STRIPE_SECRET_KEY = process.env.STRIPE_SECRET_KEY || functions.config().stripe?.secret;
 const STRIPE_WEBHOOK_SECRET = process.env.STRIPE_WEBHOOK_SECRET || functions.config().stripe?.webhook;

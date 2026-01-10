@@ -195,26 +195,7 @@ export const ClientForm: React.FC = () => {
   };
 
   const validateForm = (): boolean => {
-    if (!client.branch.trim()) {
-      // toast.error('Razão Social é obrigatória');
-      return false;
-    }
-    if (!client.name.trim()) {
-      // toast.error('Nome Fantasia é obrigatório');
-      return false;
-    }
-    if (!client.cnpj.trim()) {
-      // toast.error('CNPJ é obrigatório');
-      return false;
-    }
-    if (!client.address.trim()) {
-      // toast.error('Endereço é obrigatório');
-      return false;
-    }
-    if (!client.contact.trim()) {
-      // toast.error('Contato é obrigatório');
-      return false;
-    }
+    // Nenhum campo é obrigatório conforme solicitação
     return true;
   };
 
@@ -283,7 +264,7 @@ export const ClientForm: React.FC = () => {
                   <input type="text" name="name" value={client.name} onChange={handleChange} className="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-blue-500 focus:ring-blue-500" />
                 </div>
                 <div>
-                  <label className="block text-sm font-medium text-gray-700">CNPJ</label>
+                  <label className="block text-sm font-medium text-gray-700">CNPJ/CPF</label>
                   <input type="text" name="cnpj" value={client.cnpj} onChange={handleChange} className="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-blue-500 focus:ring-blue-500" />
                 </div>
                 <div>
@@ -349,7 +330,7 @@ export const ClientForm: React.FC = () => {
                   </div>
                   <div className="text-sm text-gray-600 grid grid-cols-1 sm:grid-cols-2 gap-2">
                     <p><span className="font-medium">Nome Fantasia:</span> {client.name}</p>
-                    <p><span className="font-medium">CNPJ:</span> {client.cnpj}</p>
+                    <p><span className="font-medium">CNPJ/CPF:</span> {client.cnpj}</p>
                     <p><span className="font-medium">Contato:</span> {client.contact}</p>
                     <p><span className="font-medium">Telefone:</span> {client.phone}</p>
                     <p className="sm:col-span-2"><span className="font-medium">Endereço:</span> {client.address}, {client.neighborhood}, {client.city} - {client.state}, {client.zip_code}</p>

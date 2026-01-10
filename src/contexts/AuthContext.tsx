@@ -6,12 +6,7 @@ import type { Role } from '../types/role';
 import { DEFAULT_ROLE } from '../types/role';
 import { storageService } from '../services/storageService';
 
-export interface Subscription {
-  status: 'active' | 'pending' | 'expired' | 'canceled';
-  planId: string;
-  endDate: any;
-  paymentId?: string;
-}
+import type { Subscription } from '../types/auth';
 
 interface AuthContextValue {
   user: FirebaseUser | null;
@@ -69,6 +64,11 @@ export function AuthProvider({ children }: { children: ReactNode }) {
             const userData = storageService.getUserData();
             const storedRole = userData?.role as Role | undefined;
             if (storedRole) resolvedRole = storedRole;
+          }
+
+          // 3. Override for Owner
+          if (currentUser.email === 'juninhomarinho22@gmail.com') {
+            resolvedRole = 'owner';
           }
 
           setRole(resolvedRole ?? DEFAULT_ROLE);

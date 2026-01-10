@@ -256,12 +256,25 @@ export const ScheduleList: React.FC<ScheduleListProps> = ({
 
   const handleStartOrder = async (schedule: Schedule) => {
     try {
+      // Manual check for subscription to ensure we trigger the UI feedback if needed
+      // This is redundant if button is disabled, but distinct if we enable the button
+      if (!isSubscriptionActive) {
+        throw new Error('assinatura inativa');
+      }
+
       // A limpeza automática garante que não haverá conflitos de OS ativas
 
       // Verifica se o agendamento já está em andamento
       if (await hasActiveSchedule(schedule.id)) {
-        // toast.error('Este agendamento já está em andamento.');
         console.error('Este agendamento já está em andamento.');
+        setMessageConfig({
+          title: 'Atenção',
+          message: 'Este agendamento já possui uma ordem de serviço em andamento.',
+          variant: 'warning',
+          primaryLabel: 'Entendi',
+          onPrimary: () => setMessageOpen(false),
+        });
+        setMessageOpen(true);
         return;
       }
 
@@ -274,7 +287,6 @@ export const ScheduleList: React.FC<ScheduleListProps> = ({
       console.log('Nova OS criada:', newOrder);
 
       // Mostra mensagem de sucesso
-      // toast.success('Ordem de serviço iniciada com sucesso!');
       console.log('Ordem de serviço iniciada com sucesso!');
 
       // Fecha o modal de ações
@@ -527,10 +539,7 @@ export const ScheduleList: React.FC<ScheduleListProps> = ({
                         ) : (
                           <button
                             onClick={async () => {
-                              if (!isSubscriptionActive) {
-                                // Fallback double check (redundant via UI but good for safety)
-                                return;
-                              }
+                              // Permitir que o clique processe para exibir o modal de erro se necessário
                               setIsStartingOrder(true);
                               try {
                                 await handleStartOrder(selectedSchedule);
@@ -538,8 +547,8 @@ export const ScheduleList: React.FC<ScheduleListProps> = ({
                                 setIsStartingOrder(false);
                               }
                             }}
-                            disabled={isStartingOrder || !isSubscriptionActive}
-                            className={`w-full flex items-center justify-center px-4 py-2 border border-transparent rounded-md shadow-sm text-sm font-medium text-white ${isStartingOrder || !isSubscriptionActive
+                            disabled={isStartingOrder}
+                            className={`w-full flex items-center justify-center px-4 py-2 border border-transparent rounded-md shadow-sm text-sm font-medium text-white ${isStartingOrder
                               ? 'bg-gray-400 cursor-not-allowed'
                               : 'bg-blue-600 hover:bg-blue-700'
                               } focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500`}
@@ -547,9 +556,9 @@ export const ScheduleList: React.FC<ScheduleListProps> = ({
                             {isStartingOrder ? (
                               <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-white mr-2"></div>
                             ) : (
-                              !isSubscriptionActive ? <AlertCircle className="w-4 h-4 mr-2" /> : <Play className="w-4 h-4 mr-2" />
+                              <Play className="w-4 h-4 mr-2" />
                             )}
-                            {isStartingOrder ? 'Iniciando...' : (!isSubscriptionActive ? 'Assinatura Inativa' : 'Iniciar OS')}
+                            {isStartingOrder ? 'Iniciando...' : 'Iniciar OS'}
                           </button>
                         )}
                         <button

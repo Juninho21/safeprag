@@ -34,7 +34,7 @@ if (missingKeys.length > 0) {
 
 // Inicialização mínima no estilo do snippet
 export const app = initializeApp(firebaseConfig);
-export const db = getFirestore(app, 'safeprag');
+export const db = getFirestore(app);
 export const storage = getStorage(app);
 export const auth = getAuth(app);
 
