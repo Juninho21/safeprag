@@ -7,7 +7,6 @@ import { Capacitor } from '@capacitor/core';
 import { GoogleAuth } from '@belongnet/capacitor-google-auth';
 import { FcGoogle } from 'react-icons/fc';
 import { useAuth } from '../../contexts/AuthContext';
-// import { toast } from 'react-toastify'; // Removido
 
 export function Login() {
   const [email, setEmail] = useState('');
@@ -19,13 +18,11 @@ export function Login() {
   const authAvailable = Boolean(auth);
   const { user, role, loading: authLoading } = useAuth();
 
-  // Detecta plataforma (mantemos para escolher fluxo, mas não ocultar botão)
   const isAndroid = Capacitor.getPlatform() === 'android';
 
   useEffect(() => {
     try {
       const webClientId = (import.meta.env.VITE_GOOGLE_WEB_CLIENT_ID || '').trim() || '759964931590-iiigm5did69ttrjj98unt5pl15ardtb2.apps.googleusercontent.com';
-      // Inicializa GoogleAuth em todas as plataformas (Android/web) para evitar erro "initialize() first".
       GoogleAuth.initialize({
         scopes: ['profile', 'email'],
         clientId: webClientId
@@ -35,7 +32,6 @@ export function Login() {
     }
   }, []);
 
-  // Redirecionamento baseado no papel do usuário
   useEffect(() => {
     if (!authLoading && user && role) {
       if (role === 'superuser' || role === 'admin') {
@@ -61,11 +57,22 @@ export function Login() {
         setError('Autenticação não configurada. Configure o Firebase para habilitar login.');
         return;
       }
-      // Autenticação com e-mail e senha (Firebase Auth)
+
       await signInWithEmailAndPassword(auth, email, password);
-      // Navegação será tratada pelo useEffect
     } catch (err: any) {
-      const message = err?.message || 'Erro ao fazer login. Tente novamente.';
+      console.error('[Login Error]', err.code, err.message);
+
+      let message = 'E-mail ou senha incorretos.';
+
+      // Detecção inteligente de contas Google
+      if (err.code === 'auth/invalid-credential' || err.code === 'auth/wrong-password') {
+        message = 'Senha incorreta. Se você criou sua conta via Google, clique em "Esqueci a senha" para definir uma senha manual e poder logar por aqui.';
+      } else if (err.code === 'auth/user-not-found') {
+        message = 'Usuário não encontrado. Verifique o e-mail digitado.';
+      } else if (err.code === 'auth/too-many-requests') {
+        message = 'Muitas tentativas falhas. Tente novamente em alguns minutos.';
+      }
+
       setError(message);
     } finally {
       setLoading(false);
@@ -73,23 +80,24 @@ export function Login() {
   };
 
   const handleForgotPassword = async () => {
+    if (!email) {
+      setError('Por favor, digite seu e-mail acima para receber o link de redefinição.');
+      return;
+    }
+
     setLoading(true);
     setError(null);
     setInfo(null);
     try {
       if (!authAvailable) {
-        setError('Autenticação não configurada. Configure o Firebase para habilitar login.');
-        return;
-      }
-      if (!email) {
-        setError('Informe seu email para redefinir a senha.');
+        setError('Autenticação não configurada.');
         return;
       }
       await sendPasswordResetEmail(auth, email);
-      setInfo('Enviamos um link de redefinição de senha para seu e-mail.');
+      setInfo('Enviamos um link para seu e-mail. Use-o para criar ou redefinir sua senha.');
     } catch (err: any) {
-      const message = err?.message || 'Falha ao enviar e-mail de redefinição.';
-      setError(message);
+      console.error('[Reset Password Error]', err.code);
+      setError('Falha ao enviar e-mail. Verifique se o e-mail está correto.');
     } finally {
       setLoading(false);
     }
@@ -100,11 +108,10 @@ export function Login() {
     setError(null);
     try {
       if (!authAvailable) {
-        setError('Autenticação não configurada. Configure o Firebase para habilitar login.');
+        setError('Autenticação não configurada.');
         return;
       }
       if (isAndroid) {
-        // Garante initialize() antes do signIn no Android
         const webClientId = (import.meta.env.VITE_GOOGLE_WEB_CLIENT_ID || '').trim() || '759964931590-iiigm5did69ttrjj98unt5pl15ardtb2.apps.googleusercontent.com';
         try {
           await GoogleAuth.initialize({
@@ -112,15 +119,12 @@ export function Login() {
             clientId: webClientId
           });
         } catch (initErr) {
-          console.warn('[GoogleAuth] initialize (android) erro', initErr);
+          console.warn('[GoogleAuth] init erro', initErr);
         }
 
-        // Login nativo com Google dentro do app (sem navegador)
         const googleUser = await GoogleAuth.signIn();
-        console.log('[GoogleAuth] user', googleUser);
         const idToken = googleUser?.authentication?.idToken;
         const accessToken = googleUser?.authentication?.accessToken;
-        console.log('[GoogleAuth] tokens', { idToken: Boolean(idToken), accessToken: Boolean(accessToken) });
 
         if (!idToken && !accessToken) {
           throw new Error('Não foi possível obter token do Google');
@@ -128,76 +132,47 @@ export function Login() {
 
         const credential = GoogleAuthProvider.credential(idToken || undefined, accessToken || undefined);
         await signInWithCredential(auth, credential);
-        // Navegação será tratada pelo useEffect
       } else {
-        // Fallback web (PWA/desktop)
         const provider = new GoogleAuthProvider();
         await signInWithPopup(auth, provider);
-        // Navegação será tratada pelo useEffect
       }
     } catch (err: any) {
-      const rawCode = err?.code ?? err?.status ?? err?.error ?? '';
-      const codeStr = String(rawCode || '').trim();
-      let message = err?.message || 'Erro ao entrar com Google.';
-
-      // Mapeia códigos comuns do Google Play Services
-      // 10: DEVELOPER_ERROR (configuração OAuth/cliente), 12501: SIGN_IN_CANCELLED, 12500: SIGN_IN_FAILED
-      if (codeStr === '10' || message.includes('statusCode=10') || message.includes('DEVELOPER_ERROR')) {
-        message = 'Falha de configuração do Google Sign-In (código 10). Verifique SHA-1 do app, o clientId e usuários de teste na tela de consentimento.';
-      } else if (codeStr === '12501') {
-        message = 'Login cancelado pelo usuário (código 12501). Tente novamente.';
-      } else if (codeStr === '12500') {
-        message = 'Não foi possível concluir o login Google (código 12500). Atualize o Google Play Services e tente novamente.';
-      }
-
-      console.error('[GoogleAuth] signIn error', { code: codeStr || rawCode, message }, err);
-      setError(codeStr ? `${message} (código: ${codeStr})` : message);
+      console.error('[Google Login Error]', err);
+      setError('Erro ao entrar com Google. Tente novamente.');
     } finally {
       setLoading(false);
     }
   };
 
   return (
-    <div className="min-h-screen flex items-center justify-center bg-gradient-to-br from-gray-50 to-gray-100 py-12 px-4 sm:px-6 lg:px-8">
-      <div className="max-w-md w-full space-y-8 bg-white shadow-xl rounded-xl p-8">
+    <div className="min-h-screen flex items-center justify-center bg-gray-50 py-12 px-4 sm:px-6 lg:px-8">
+      <div className="max-w-md w-full space-y-8 bg-white shadow-xl rounded-xl p-8 border border-gray-100">
         <div className="text-center">
           <Logo size="2xl" />
+          <h2 className="mt-4 text-3xl font-extrabold text-gray-900">Entrar no Safeprag</h2>
+          <p className="mt-2 text-sm text-gray-600">Gestão inteligente de pragas</p>
         </div>
-        {!authAvailable && (
-          <div className="mt-4 bg-yellow-50 border border-yellow-200 text-yellow-800 text-sm rounded-md p-3">
-            Autenticação não configurada. Adicione as variáveis do Firebase para habilitar o login.
-          </div>
-        )}
+
         <form className="mt-8 space-y-6" onSubmit={handleLogin}>
-          <div className="rounded-md shadow-sm -space-y-px">
+          <div className="rounded-md shadow-sm space-y-4">
             <div>
-              <label htmlFor="email-address" className="sr-only">
-                Email
-              </label>
+              <label className="block text-sm font-medium text-gray-700 mb-1">E-mail</label>
               <input
-                id="email-address"
-                name="email"
                 type="email"
-                autoComplete="email"
                 required
-                className="appearance-none rounded-none relative block w-full px-3 py-2 border border-gray-300 placeholder-gray-500 text-gray-900 rounded-t-md focus:outline-none focus:ring-blue-600 focus:border-blue-600 focus:z-10 sm:text-sm"
-                placeholder="Email"
+                className="appearance-none relative block w-full px-4 py-3 border border-gray-300 placeholder-gray-500 text-gray-900 rounded-lg focus:outline-none focus:ring-blue-500 focus:border-blue-500 transition-all"
+                placeholder="seu@email.com"
                 value={email}
                 onChange={(e) => setEmail(e.target.value)}
               />
             </div>
             <div>
-              <label htmlFor="password" className="sr-only">
-                Senha
-              </label>
+              <label className="block text-sm font-medium text-gray-700 mb-1">Senha</label>
               <input
-                id="password"
-                name="password"
                 type="password"
-                autoComplete="current-password"
                 required
-                className="appearance-none rounded-none relative block w-full px-3 py-2 border border-gray-300 placeholder-gray-500 text-gray-900 rounded-b-md focus:outline-none focus:ring-blue-600 focus:border-blue-600 focus:z-10 sm:text-sm"
-                placeholder="Senha"
+                className="appearance-none relative block w-full px-4 py-3 border border-gray-300 placeholder-gray-500 text-gray-900 rounded-lg focus:outline-none focus:ring-blue-500 focus:border-blue-500 transition-all"
+                placeholder="••••••••"
                 value={password}
                 onChange={(e) => setPassword(e.target.value)}
               />
@@ -205,51 +180,48 @@ export function Login() {
           </div>
 
           {error && (
-            <div className="text-red-600 text-sm text-center">{error}</div>
+            <div className="bg-red-50 text-red-700 text-sm p-3 rounded-lg border border-red-100 animate-pulse">
+              {error}
+            </div>
           )}
           {info && (
-            <div className="text-green-600 text-sm text-center">{info}</div>
+            <div className="bg-green-50 text-green-700 text-sm p-3 rounded-lg border border-green-100">
+              {info}
+            </div>
           )}
 
-          <div>
+          <div className="space-y-4">
             <button
               type="submit"
               disabled={loading || !authAvailable}
-              className="group relative w-full flex justify-center py-2 px-4 border border-transparent text-sm font-medium rounded-md text-white bg-blue-600 hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-600 disabled:opacity-50 disabled:cursor-not-allowed"
+              className="w-full flex justify-center py-3 px-4 border border-transparent text-sm font-bold rounded-lg text-white bg-blue-600 hover:bg-blue-700 transform transition-all active:scale-95 disabled:opacity-50"
             >
-              {loading ? 'Entrando...' : 'Entrar'}
+              {loading ? 'Processando...' : 'ENTRAR AGORA'}
+            </button>
+
+            <button
+              type="button"
+              onClick={handleGoogleLogin}
+              disabled={loading || !authAvailable}
+              className="w-full flex items-center justify-center gap-3 py-3 px-4 border border-gray-300 rounded-lg bg-white hover:bg-gray-50 text-gray-700 font-medium transition-all active:scale-95 shadow-sm"
+            >
+              <FcGoogle size={22} />
+              Entrar com Google
             </button>
           </div>
 
-          <div className="flex items-center gap-3">
-            <span className="flex-1 h-px bg-gray-200" />
-            <span className="text-xs text-gray-400">ou</span>
-            <span className="flex-1 h-px bg-gray-200" />
+          <div className="text-center mt-6">
+            <button
+              type="button"
+              onClick={handleForgotPassword}
+              className="text-sm font-medium text-blue-600 hover:text-blue-800 transition-colors"
+            >
+              Esqueceu sua senha?
+            </button>
           </div>
-
-          <button
-            type="button"
-            onClick={handleForgotPassword}
-            disabled={loading || !authAvailable}
-            className="w-full text-sm text-blue-600 hover:text-blue-700 underline disabled:opacity-50 disabled:cursor-not-allowed"
-          >
-            Esqueci a senha
-          </button>
-
-          {/* Botão do Google visível em todas as plataformas */}
-          <button
-            type="button"
-            onClick={handleGoogleLogin}
-            disabled={loading || !authAvailable}
-            className="w-full flex items-center justify-center gap-3 py-2 px-4 border border-gray-300 rounded-md bg-white hover:bg-gray-50 text-gray-700 shadow-sm disabled:opacity-50"
-          >
-            <FcGoogle size={20} />
-            {loading ? 'Aguarde...' : 'Entrar com Google'}
-          </button>
-
-          {/* Link de cadastro removido */}
         </form>
       </div>
     </div>
   );
 }
+鼓
