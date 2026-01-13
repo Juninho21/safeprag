@@ -375,6 +375,45 @@ app.post('/admin/users/:uid/role', requireAdmin, express.json(), async (req, res
     }
 });
 
+app.delete('/admin/users/:uid', requireAdmin, async (req, res) => {
+    try {
+        const { uid } = req.params;
+        console.log(`[Users] Tentativa de exclusão do usuário ${uid} por ${req.user.email}`);
+
+        // Verificar se o usuário existe no Auth
+        const userRecord = await admin.auth().getUser(uid);
+        const targetCompanyId = userRecord.customClaims?.companyId;
+
+        // Se não for owner, só pode deletar usuários da própria empresa
+        if (!req.user.isOwner) {
+            if (targetCompanyId !== req.user.companyId) {
+                return res.status(403).json({ error: 'Não é possível excluir usuários de outra empresa' });
+            }
+        }
+
+        // Impedir que o usuário delete a si mesmo
+        if (uid === req.user.uid) {
+            return res.status(400).json({ error: 'Você não pode excluir sua própria conta acadêmica' });
+        }
+
+        // 1. Deletar do Firebase Auth
+        await admin.auth().deleteUser(uid);
+        console.log(`[Users] Usuário ${uid} removido do Auth`);
+
+        // 2. Deletar do Firestore
+        await db.collection('users').doc(uid).delete();
+        console.log(`[Users] Usuário ${uid} removido do Firestore`);
+
+        res.json({ success: true, message: 'Usuário excluído com sucesso' });
+    } catch (e) {
+        console.error('Erro ao excluir usuário:', e);
+        if (e.code === 'auth/user-not-found') {
+            return res.status(404).json({ error: 'Usuário não encontrado no sistema' });
+        }
+        res.status(500).json({ error: 'Erro ao excluir usuário: ' + e.message });
+    }
+});
+
 // Middleware para verificar apenas autenticação (qualquer usuário logado)
 async function requireAuth(req, res, next) {
     try {
