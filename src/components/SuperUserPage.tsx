@@ -1,9 +1,9 @@
 import { useEffect, useState } from 'react';
-import { 
-  Users, Database, Activity, Shield, Settings, 
-  CreditCard, Save, Edit2, Loader2, Search,
-  CheckCircle, AlertTriangle, Info, Trash2,
-  TrendingUp, Building2, UserPlus, Menu, X, ArrowUpRight
+import {
+    Users, Database, Activity, Shield, Settings,
+    CreditCard, Save, Edit2, Loader2, Search,
+    CheckCircle, AlertTriangle, Info, Trash2,
+    TrendingUp, Building2, UserPlus, Menu, X, ArrowUpRight
 } from 'lucide-react';
 import { plansService, Plan, MercadoPagoConfig } from '../services/plansService';
 import { useAuth } from '../contexts/AuthContext';
@@ -109,8 +109,8 @@ export function SuperUserPage() {
         );
     }
 
-    const filteredUsers = users.filter(u => 
-        u.email?.toLowerCase().includes(searchTerm.toLowerCase()) || 
+    const filteredUsers = users.filter(u =>
+        u.email?.toLowerCase().includes(searchTerm.toLowerCase()) ||
         u.displayName?.toLowerCase().includes(searchTerm.toLowerCase())
     );
 
@@ -129,35 +129,82 @@ export function SuperUserPage() {
                 </div>
 
                 <div className="flex items-center gap-3">
-                    <div className="hidden md:block text-right">
-                        <p className="text-sm font-bold text-gray-900">{user?.displayName || 'Administrador'}</p>
-                        <p className="text-xs text-gray-500 truncate max-w-[150px]">{user?.email}</p>
+                    <div className="text-right flex flex-col items-end">
+                        <p className="text-sm font-bold text-gray-900 leading-none">{user?.displayName || 'Admin'}</p>
+                        <p className="text-[10px] text-gray-500 truncate max-w-[120px] md:max-w-[200px] mt-0.5">{user?.email}</p>
                     </div>
-                    <div className="w-9 h-9 md:w-10 md:h-10 bg-gradient-to-br from-purple-500 to-indigo-600 rounded-full flex items-center justify-center text-white font-bold shadow-lg">
+                    <div className="w-8 h-8 md:w-10 md:h-10 bg-gradient-to-br from-purple-500 to-indigo-600 rounded-full flex items-center justify-center text-white text-xs md:text-sm font-bold shadow-lg shrink-0">
                         {user?.email?.[0].toUpperCase() || 'A'}
                     </div>
-                    <button 
+                    <button
                         onClick={() => setIsMobileMenuOpen(!isMobileMenuOpen)}
-                        className="md:hidden p-2 text-gray-500"
+                        className="md:hidden p-1.5 text-gray-500 bg-gray-50 rounded-lg"
                     >
-                        {isMobileMenuOpen ? <X /> : <Menu />}
+                        {isMobileMenuOpen ? <X size={20} /> : <Menu size={20} />}
                     </button>
                 </div>
             </header>
 
-            {/* Navegação Mobile Overlay */}
+            {/* Navegação Mobile Lateral (Drawer) */}
             {isMobileMenuOpen && (
-                <div className="md:hidden fixed inset-0 z-30 bg-black/50 backdrop-blur-sm" onClick={() => setIsMobileMenuOpen(false)}>
-                    <div className="bg-white w-2/3 h-full p-6 animate-in slide-in-from-left duration-200" onClick={e => e.stopPropagation()}>
-                        <div className="space-y-4 pt-10">
-                            <NavButton active={activeTab === 'overview'} onClick={() => {setActiveTab('overview'); setIsMobileMenuOpen(false)}} icon={Activity} label="Visão Geral" />
-                            <NavButton active={activeTab === 'users'} onClick={() => {setActiveTab('users'); setIsMobileMenuOpen(false)}} icon={Users} label="Usuários" />
-                            <NavButton active={activeTab === 'plans'} onClick={() => {setActiveTab('plans'); setIsMobileMenuOpen(false)}} icon={Settings} label="Planos" />
-                            <NavButton active={activeTab === 'config'} onClick={() => {setActiveTab('config'); setIsMobileMenuOpen(false)}} icon={CreditCard} label="Pagamentos" />
+                <div className="md:hidden fixed inset-0 z-[100] bg-black/50 backdrop-blur-sm" onClick={() => setIsMobileMenuOpen(false)}>
+                    <div className="bg-white w-4/5 h-full p-6 shadow-2xl animate-in slide-in-from-left duration-300" onClick={e => e.stopPropagation()}>
+                        <div className="flex items-center gap-3 mb-8 pb-4 border-b">
+                            <div className="p-2 bg-purple-600 rounded-xl">
+                                <Shield className="w-6 h-6 text-white" />
+                            </div>
+                            <h2 className="text-xl font-black text-gray-900">Configurações</h2>
+                        </div>
+                        <div className="space-y-3">
+                            <NavButton active={activeTab === 'overview'} onClick={() => { setActiveTab('overview'); setIsMobileMenuOpen(false) }} icon={Activity} label="Visão Geral" />
+                            <NavButton active={activeTab === 'users'} onClick={() => { setActiveTab('users'); setIsMobileMenuOpen(false) }} icon={Users} label="Usuários & Permissões" />
+                            <NavButton active={activeTab === 'plans'} onClick={() => { setActiveTab('plans'); setIsMobileMenuOpen(false) }} icon={Building2} label="Gerenciar Planos" />
+                            <NavButton active={activeTab === 'config'} onClick={() => { setActiveTab('config'); setIsMobileMenuOpen(false) }} icon={CreditCard} label="Configurações App" />
+                        </div>
+
+                        <div className="absolute bottom-10 left-6 right-6">
+                            <button
+                                onClick={handleResetPlans}
+                                className="w-full flex items-center justify-center gap-2 py-4 text-red-600 font-bold bg-red-50 rounded-2xl"
+                            >
+                                <Trash2 className="w-5 h-5" /> Restaurar Padrões
+                            </button>
                         </div>
                     </div>
                 </div>
             )}
+
+            {/* Bottom Navigation Mobile (Android Standard) */}
+            <nav className="md:hidden fixed bottom-0 left-0 right-0 bg-white border-t border-gray-100 flex items-center justify-around py-3 z-50 shadow-[0_-4px_12px_rgba(0,0,0,0.05)]">
+                <button
+                    onClick={() => setActiveTab('overview')}
+                    className={`flex flex-col items-center gap-1 ${activeTab === 'overview' ? 'text-purple-600' : 'text-gray-400'}`}
+                >
+                    <Activity className={`w-5 h-5 ${activeTab === 'overview' ? 'scale-110 transition-transform' : ''}`} />
+                    <span className="text-[10px] font-bold uppercase tracking-tighter">Início</span>
+                </button>
+                <button
+                    onClick={() => setActiveTab('users')}
+                    className={`flex flex-col items-center gap-1 ${activeTab === 'users' ? 'text-purple-600' : 'text-gray-400'}`}
+                >
+                    <Users className={`w-5 h-5 ${activeTab === 'users' ? 'scale-110 transition-transform' : ''}`} />
+                    <span className="text-[10px] font-bold uppercase tracking-tighter">Usuários</span>
+                </button>
+                <button
+                    onClick={() => setActiveTab('plans')}
+                    className={`flex flex-col items-center gap-1 ${activeTab === 'plans' ? 'text-purple-600' : 'text-gray-400'}`}
+                >
+                    <Building2 className={`w-5 h-5 ${activeTab === 'plans' ? 'scale-110 transition-transform' : ''}`} />
+                    <span className="text-[10px] font-bold uppercase tracking-tighter">Planos</span>
+                </button>
+                <button
+                    onClick={() => setActiveTab('config')}
+                    className={`flex flex-col items-center gap-1 ${activeTab === 'config' ? 'text-purple-600' : 'text-gray-400'}`}
+                >
+                    <CreditCard className={`w-5 h-5 ${activeTab === 'config' ? 'scale-110 transition-transform' : ''}`} />
+                    <span className="text-[10px] font-bold uppercase tracking-tighter">Config</span>
+                </button>
+            </nav>
 
             <div className="flex-1 flex flex-col md:flex-row">
                 {/* Sidebar Desktop */}
@@ -166,9 +213,9 @@ export function SuperUserPage() {
                     <NavButton active={activeTab === 'users'} onClick={() => setActiveTab('users')} icon={Users} label="Usuários & Permissões" />
                     <NavButton active={activeTab === 'plans'} onClick={() => setActiveTab('plans')} icon={Building2} label="Gerenciar Planos" />
                     <NavButton active={activeTab === 'config'} onClick={() => setActiveTab('config')} icon={CreditCard} label="Configurações App" />
-                    
+
                     <div className="mt-auto border-t pt-6">
-                        <button 
+                        <button
                             onClick={handleResetPlans}
                             className="w-full text-left px-4 py-2 text-sm font-medium text-red-600 hover:bg-red-50 rounded-lg flex items-center gap-2"
                         >
@@ -182,32 +229,32 @@ export function SuperUserPage() {
                         <div className="space-y-8 animate-in fade-in duration-500">
                             {/* Cards de Estatísticas com Dados Reais */}
                             <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4 md:gap-6">
-                                <StatCard 
-                                    title="Usuários Registrados" 
-                                    value={users.length} 
-                                    icon={Users} 
-                                    color="blue" 
+                                <StatCard
+                                    title="Usuários Registrados"
+                                    value={users.length}
+                                    icon={Users}
+                                    color="blue"
                                     trend="Dados Reais"
                                 />
-                                <StatCard 
-                                    title="Empresas/Instâncias" 
-                                    value={companies.length} 
-                                    icon={Building2} 
-                                    color="green" 
+                                <StatCard
+                                    title="Empresas/Instâncias"
+                                    value={companies.length}
+                                    icon={Building2}
+                                    color="green"
                                     trend="Processadas"
                                 />
-                                <StatCard 
-                                    title="Assinaturas Ativas" 
-                                    value={plans.length} 
-                                    icon={TrendingUp} 
-                                    color="purple" 
+                                <StatCard
+                                    title="Assinaturas Ativas"
+                                    value={plans.length}
+                                    icon={TrendingUp}
+                                    color="purple"
                                     trend="Planos Disponíveis"
                                 />
-                                <StatCard 
-                                    title="Sistema" 
-                                    value="Versão 3.5.0" 
-                                    icon={Settings} 
-                                    color="orange" 
+                                <StatCard
+                                    title="Sistema"
+                                    value="Versão 3.5.0"
+                                    icon={Settings}
+                                    color="orange"
                                     trend="Produção"
                                 />
                             </div>
@@ -248,17 +295,17 @@ export function SuperUserPage() {
 
                     {activeTab === 'users' && (
                         <div className="bg-white rounded-2xl shadow-sm border animate-in slide-in-from-bottom-4 duration-300">
-                            <div className="p-6 border-b border-gray-100">
+                            <div className="p-4 md:p-6 border-b border-gray-100">
                                 <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
-                                    <h2 className="text-xl font-bold flex items-center gap-2">
-                                        Usuários do Sistema <span className="text-sm font-normal text-gray-500 bg-gray-100 px-2 py-0.5 rounded-full">{users.length}</span>
+                                    <h2 className="text-lg md:text-xl font-bold flex items-center gap-2">
+                                        Usuários <span className="text-xs font-normal text-gray-400 bg-gray-50 px-2 py-0.5 rounded-full">{users.length}</span>
                                     </h2>
-                                    <div className="relative">
-                                        <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400" />
-                                        <input 
-                                            type="text" 
-                                            placeholder="Buscar por e-mail ou nome..." 
-                                            className="pl-10 pr-4 py-2 bg-gray-50 border-none rounded-xl text-sm w-full md:w-80 focus:ring-2 focus:ring-purple-500"
+                                    <div className="relative w-full md:w-auto">
+                                        <Search className="absolute left-4 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400" />
+                                        <input
+                                            type="text"
+                                            placeholder="Buscar e-mail ou nome..."
+                                            className="pl-12 pr-4 py-3 md:py-2 bg-gray-50 border-none rounded-2xl md:rounded-xl text-sm w-full md:w-80 focus:ring-2 focus:ring-purple-500 font-medium"
                                             value={searchTerm}
                                             onChange={(e) => setSearchTerm(e.target.value)}
                                         />
@@ -266,13 +313,14 @@ export function SuperUserPage() {
                                 </div>
                             </div>
 
-                            <div className="overflow-x-auto">
+                            {/* Vista Desktop (Tabela) */}
+                            <div className="hidden md:block overflow-x-auto">
                                 <table className="w-full text-left">
                                     <thead className="bg-gray-50 text-xs font-semibold uppercase text-gray-500">
                                         <tr>
                                             <th className="px-6 py-4">Usuário</th>
                                             <th className="px-6 py-4">Papel / Permissão</th>
-                                            <th className="px-6 py-4 hidden md:table-cell">Status</th>
+                                            <th className="px-6 py-4">Status</th>
                                             <th className="px-6 py-4 text-right">Ações</th>
                                         </tr>
                                     </thead>
@@ -291,7 +339,7 @@ export function SuperUserPage() {
                                                     </div>
                                                 </td>
                                                 <td className="px-6 py-4">
-                                                    <select 
+                                                    <select
                                                         value={userItem.role || ''}
                                                         onChange={(e) => handleUpdateRole(userItem.uid, e.target.value)}
                                                         className="text-xs font-medium bg-white border border-gray-200 rounded-md py-1 px-2 focus:ring-2 focus:ring-purple-500 outline-none"
@@ -302,14 +350,14 @@ export function SuperUserPage() {
                                                         <option value="owner">Super Admin (Owner)</option>
                                                     </select>
                                                 </td>
-                                                <td className="px-6 py-4 hidden md:table-cell">
+                                                <td className="px-6 py-4">
                                                     <span className={`inline-flex items-center gap-1.5 px-2 py-1 rounded-full text-[10px] font-bold uppercase ${userItem.disabled ? 'bg-red-100 text-red-600' : 'bg-green-100 text-green-600'}`}>
                                                         <div className={`w-1.5 h-1.5 rounded-full ${userItem.disabled ? 'bg-red-600' : 'bg-green-600'}`} />
                                                         {userItem.disabled ? 'Desativado' : 'Ativo'}
                                                     </span>
                                                 </td>
                                                 <td className="px-6 py-4 text-right">
-                                                    <button className="p-1.5 text-gray-400 hover:text-red-600 rounded-lg hover:bg-red-50">
+                                                    <button className="p-1.5 text-gray-400 hover:text-red-600 rounded-lg hover:bg-red-50 transition-colors">
                                                         <Trash2 className="w-4 h-4" />
                                                     </button>
                                                 </td>
@@ -318,6 +366,52 @@ export function SuperUserPage() {
                                     </tbody>
                                 </table>
                             </div>
+
+                            {/* Vista Mobile (Cards) - Melhor para Android */}
+                            <div className="md:hidden divide-y divide-gray-100">
+                                {filteredUsers.map(userItem => (
+                                    <div key={userItem.uid} className="p-4 flex flex-col gap-3">
+                                        <div className="flex justify-between items-start">
+                                            <div className="flex items-center gap-3">
+                                                <div className="w-10 h-10 rounded-xl bg-purple-100 flex items-center justify-center text-sm font-bold text-purple-600">
+                                                    {userItem.email?.[0].toUpperCase()}
+                                                </div>
+                                                <div>
+                                                    <p className="text-sm font-bold text-gray-900">{userItem.displayName || 'Sem nome'}</p>
+                                                    <p className="text-xs text-gray-500 truncate max-w-[200px]">{userItem.email}</p>
+                                                </div>
+                                            </div>
+                                            <span className={`inline-flex items-center gap-1 px-2 py-0.5 rounded-md text-[9px] font-black uppercase ${userItem.disabled ? 'bg-red-100 text-red-600' : 'bg-green-100 text-green-600'}`}>
+                                                {userItem.disabled ? 'Inativo' : 'Ativo'}
+                                            </span>
+                                        </div>
+
+                                        <div className="flex items-center justify-between gap-2 mt-1">
+                                            <div className="flex-1">
+                                                <span className="text-[10px] font-bold text-gray-400 uppercase tracking-tighter block mb-1">Nível de Acesso</span>
+                                                <select
+                                                    value={userItem.role || ''}
+                                                    onChange={(e) => handleUpdateRole(userItem.uid, e.target.value)}
+                                                    className="w-full text-xs font-bold bg-gray-50 border-none rounded-lg py-2 px-3 focus:ring-2 focus:ring-purple-500 outline-none"
+                                                >
+                                                    <option value="cliente">Cliente</option>
+                                                    <option value="controlador">Controlador</option>
+                                                    <option value="admin">Administrador</option>
+                                                    <option value="owner">Super Admin</option>
+                                                </select>
+                                            </div>
+                                            <button className="h-9 w-9 mt-5 flex items-center justify-center bg-red-50 text-red-500 rounded-lg shrink-0">
+                                                <Trash2 className="w-4 h-4" />
+                                            </button>
+                                        </div>
+                                    </div>
+                                ))}
+                                {filteredUsers.length === 0 && (
+                                    <div className="p-10 text-center">
+                                        <p className="text-sm text-gray-500 font-medium">Nenhum usuário encontrado.</p>
+                                    </div>
+                                )}
+                            </div>
                         </div>
                     )}
 
@@ -325,8 +419,12 @@ export function SuperUserPage() {
                         <div className="space-y-6">
                             <div className="flex items-center justify-between">
                                 <h2 className="text-xl font-bold">Planos Disponíveis</h2>
-                                <button className="px-4 py-2 bg-purple-600 text-white rounded-xl text-sm font-bold flex items-center gap-2 shadow-lg shadow-purple-200">
+                                <button className="hidden md:flex px-4 py-2 bg-purple-600 text-white rounded-xl text-sm font-bold items-center gap-2 shadow-lg shadow-purple-200">
                                     <UserPlus className="w-4 h-4" /> Novo Plano
+                                </button>
+                                {/* Floating Action Button for Mobile */}
+                                <button className="md:hidden fixed right-6 bottom-24 w-14 h-14 bg-purple-600 text-white rounded-full shadow-2xl flex items-center justify-center z-40 active:scale-90 transition-transform">
+                                    <UserPlus className="w-6 h-6" />
                                 </button>
                             </div>
                             <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
@@ -350,7 +448,7 @@ export function SuperUserPage() {
                                                 </div>
                                             ))}
                                         </div>
-                                        <button 
+                                        <button
                                             onClick={() => setEditingPlan(plan)}
                                             className="w-full py-3 border-2 border-purple-100 text-purple-600 rounded-2xl text-sm font-black hover:bg-purple-600 hover:text-white hover:border-purple-600 transition-all flex items-center justify-center gap-2"
                                         >
@@ -378,10 +476,10 @@ export function SuperUserPage() {
                                 <div>
                                     <label className="block text-sm font-bold text-gray-700 mb-2">Access Token (Production)</label>
                                     <div className="relative">
-                                        <input 
-                                            type="password" 
+                                        <input
+                                            type="password"
                                             value={mpConfig.accessToken}
-                                            onChange={(e) => setMpConfig({...mpConfig, accessToken: e.target.value})}
+                                            onChange={(e) => setMpConfig({ ...mpConfig, accessToken: e.target.value })}
                                             className="w-full px-4 py-3 bg-gray-50 border-2 border-gray-100 rounded-2xl focus:border-blue-500 outline-none transition-all placeholder:text-gray-400"
                                             placeholder="APP_USR-..."
                                         />
@@ -395,7 +493,7 @@ export function SuperUserPage() {
                                     <p className="text-xs text-amber-700 leading-relaxed font-medium">Os pagamentos são processados via Cloud Functions no Firebase para garantir a segurança dos tokens secretos e integridade das assinaturas.</p>
                                 </div>
 
-                                <button 
+                                <button
                                     onClick={handleSaveConfig}
                                     className="w-full h-14 bg-blue-600 text-white rounded-2xl font-black shadow-lg shadow-blue-200 hover:bg-blue-700 hover:-translate-y-0.5 transition-all flex items-center justify-center gap-2"
                                 >
@@ -418,42 +516,42 @@ export function SuperUserPage() {
                         <div className="space-y-4">
                             <div>
                                 <label className="text-xs font-black uppercase text-gray-400 tracking-wider">Nome Comercial</label>
-                                <input 
-                                    type="text" 
-                                    value={editingPlan.name} 
+                                <input
+                                    type="text"
+                                    value={editingPlan.name}
                                     className="w-full mt-1 p-3 bg-gray-50 rounded-xl border-none font-bold"
-                                    onChange={e => setEditingPlan({...editingPlan, name: e.target.value})}
+                                    onChange={e => setEditingPlan({ ...editingPlan, name: e.target.value })}
                                 />
                             </div>
                             <div className="grid grid-cols-2 gap-4">
                                 <div>
                                     <label className="text-xs font-black uppercase text-gray-400 tracking-wider">Valor (R$)</label>
-                                    <input 
-                                        type="text" 
-                                        value={editingPlan.price} 
+                                    <input
+                                        type="text"
+                                        value={editingPlan.price}
                                         className="w-full mt-1 p-3 bg-gray-50 rounded-xl border-none font-bold text-blue-600"
-                                        onChange={e => setEditingPlan({...editingPlan, price: e.target.value})}
+                                        onChange={e => setEditingPlan({ ...editingPlan, price: e.target.value })}
                                     />
                                 </div>
                                 <div>
                                     <label className="text-xs font-black uppercase text-gray-400 tracking-wider">Período</label>
-                                    <input 
-                                        type="text" 
-                                        value={editingPlan.period} 
+                                    <input
+                                        type="text"
+                                        value={editingPlan.period}
                                         className="w-full mt-1 p-3 bg-gray-50 rounded-xl border-none font-bold"
-                                        onChange={e => setEditingPlan({...editingPlan, period: e.target.value})}
+                                        onChange={e => setEditingPlan({ ...editingPlan, period: e.target.value })}
                                     />
                                 </div>
                             </div>
                             <div>
                                 <label className="text-xs font-black uppercase text-gray-400 tracking-wider">Itens do Plano (Linha por linha)</label>
-                                <textarea 
+                                <textarea
                                     className="w-full mt-1 p-3 bg-gray-50 rounded-xl border-none h-32 text-sm font-medium"
                                     value={editingPlan.features.join('\n')}
-                                    onChange={e => setEditingPlan({...editingPlan, features: e.target.value.split('\n')})}
+                                    onChange={e => setEditingPlan({ ...editingPlan, features: e.target.value.split('\n') })}
                                 />
                             </div>
-                            <button 
+                            <button
                                 onClick={() => handleSavePlan(editingPlan)}
                                 className="w-full h-14 bg-purple-600 text-white rounded-2xl font-black shadow-lg shadow-purple-200 mt-4"
                             >
@@ -469,13 +567,12 @@ export function SuperUserPage() {
 
 function NavButton({ active, onClick, icon: Icon, label }: any) {
     return (
-        <button 
+        <button
             onClick={onClick}
-            className={`w-full flex items-center gap-3 px-4 py-3 rounded-2xl text-sm font-bold transition-all ${
-                active 
-                ? 'bg-purple-600 text-white shadow-lg shadow-purple-100 -translate-r-1' 
+            className={`w-full flex items-center gap-3 px-4 py-3 rounded-2xl text-sm font-bold transition-all ${active
+                ? 'bg-purple-600 text-white shadow-lg shadow-purple-100 -translate-r-1'
                 : 'text-gray-500 hover:bg-gray-100 hover:text-gray-900'
-            }`}
+                }`}
         >
             <Icon className={`w-5 h-5 ${active ? 'text-white' : 'text-gray-400'}`} />
             {label}
@@ -492,17 +589,17 @@ function StatCard({ title, value, icon: Icon, color, trend }: any) {
     };
 
     return (
-        <div className="bg-white p-6 rounded-[28px] shadow-sm border border-gray-100 group hover:-translate-y-1 transition-all duration-300">
-            <div className="flex items-start justify-between mb-4">
-                <div className={`p-3 rounded-2xl bg-gradient-to-br ${colors[color]} shadow-lg`}>
-                    <Icon className="w-6 h-6" />
+        <div className="bg-white p-5 md:p-6 rounded-[24px] md:rounded-[28px] shadow-sm border border-gray-100 group hover:-translate-y-1 transition-all duration-300">
+            <div className="flex items-start justify-between mb-3 md:mb-4">
+                <div className={`p-2.5 md:p-3 rounded-xl md:rounded-2xl bg-gradient-to-br ${colors[color]} shadow-lg`}>
+                    <Icon className="w-5 h-5 md:w-6 md:h-6" />
                 </div>
-                <div className="flex items-center gap-1 text-[10px] font-black text-gray-400 uppercase tracking-widest bg-gray-50 px-2 py-1 rounded-full">
-                    <ArrowUpRight className="w-3 h-3" /> {trend}
+                <div className="flex items-center gap-1 text-[9px] md:text-[10px] font-black text-gray-400 uppercase tracking-widest bg-gray-50 px-2 py-1 rounded-full">
+                    {trend}
                 </div>
             </div>
-            <h3 className="text-3xl font-black text-gray-900 mb-0.5">{value}</h3>
-            <p className="text-sm font-bold text-gray-400">{title}</p>
+            <h3 className="text-2xl md:text-3xl font-black text-gray-900 mb-0.5">{value}</h3>
+            <p className="text-xs md:text-sm font-bold text-gray-400">{title}</p>
         </div>
     );
 }
