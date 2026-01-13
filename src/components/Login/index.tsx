@@ -149,8 +149,6 @@ export function Login() {
       <div className="max-w-md w-full space-y-8 bg-white shadow-xl rounded-xl p-8 border border-gray-100">
         <div className="text-center">
           <Logo size="2xl" />
-          <h2 className="mt-4 text-3xl font-extrabold text-gray-900">Entrar no Safeprag</h2>
-          <p className="mt-2 text-sm text-gray-600">Gestão inteligente de pragas</p>
         </div>
 
         <form className="mt-8 space-y-6" onSubmit={handleLogin}>
@@ -224,3 +222,4 @@ export function Login() {
     </div>
   );
 }
+
