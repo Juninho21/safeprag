@@ -944,21 +944,25 @@ function App() {
 
       // Fallback para selectedClient se não encontrar dados
       if (!client) {
-        const clientData = localStorage.getItem('selectedClient');
+        const clientData = localStorage.getItem('selectedClient') || localStorage.getItem('selected_client');
         if (clientData) {
           try {
             const parsedClient = JSON.parse(clientData);
             client = {
-              code: parsedClient.code || 'N/A',
-              name: parsedClient.name || 'Cliente não selecionado',
-              branch: parsedClient.branch || 'N/A',
+              code: parsedClient.code || parsedClient.id || 'N/A',
+              name: parsedClient.name || parsedClient.fantasyName || parsedClient.nomeFantasia || 'N/A',
+              branch: parsedClient.branch || parsedClient.razaoSocial || 'N/A',
               document: parsedClient.document || parsedClient.cnpj || 'N/A',
-              cnpj: parsedClient.cnpj || 'N/A',
-              city: parsedClient.city || 'N/A',
-              address: parsedClient.address || 'N/A',
-              contact: parsedClient.contact || 'N/A',
-              phone: parsedClient.phone || 'N/A',
-              email: parsedClient.email || 'N/A'
+              cnpj: parsedClient.cnpj || parsedClient.document || 'N/A',
+              address: parsedClient.address || parsedClient.endereco || 'N/A',
+              city: parsedClient.city || parsedClient.cidade || 'N/A',
+              phone: parsedClient.phone || parsedClient.telefone || 'N/A',
+              email: parsedClient.email || 'N/A',
+              contact: parsedClient.contact || parsedClient.contato || 'N/A',
+              // Campos específicos para o PDF
+              nomeFantasia: parsedClient.name || parsedClient.nomeFantasia || parsedClient.fantasyName || 'N/A',
+              fantasyName: parsedClient.name || parsedClient.fantasyName || parsedClient.nomeFantasia || 'N/A',
+              razaoSocial: parsedClient.branch || parsedClient.razaoSocial || 'N/A'
             };
           } catch (error) {
             console.error('Erro ao parsear dados do cliente do localStorage:', error);
@@ -1149,10 +1153,16 @@ function App() {
           code: "N/A",
           branch: "Cliente não selecionado",
           name: "Cliente não selecionado",
+          nomeFantasia: "Cliente não selecionado",
+          fantasyName: "Cliente não selecionado",
+          razaoSocial: "Cliente não selecionado",
           document: "N/A",
+          cnpj: "N/A",
           address: "N/A",
           contact: "N/A",
-          phone: "N/A"
+          phone: "N/A",
+          email: "N/A",
+          city: "N/A"
         },
         // Adiciona a lista de serviços para o PDF
         services: services,

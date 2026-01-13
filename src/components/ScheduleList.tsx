@@ -282,6 +282,14 @@ export const ScheduleList: React.FC<ScheduleListProps> = ({
       const now = new Date();
       localStorage.setItem('serviceStartTime', now.toISOString());
 
+      // Salva dados do cliente para garantir que o PDF tenha acesso ao completar
+      const allClients = getClients();
+      const fullClientData = allClients.find(c => c.id === schedule.clientId || c.id === schedule.client_id);
+      if (fullClientData) {
+        localStorage.setItem('selected_client', JSON.stringify(fullClientData));
+        localStorage.setItem('selectedClient', JSON.stringify(fullClientData));
+      }
+
       // Tenta criar a nova ordem de serviço
       const newOrder = await createServiceOrder(schedule, companyId || 'default');
       console.log('Nova OS criada:', newOrder);

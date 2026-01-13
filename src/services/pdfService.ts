@@ -53,6 +53,40 @@ const formatFilenameDate = (dateStr?: string): string => {
   return dateStr.replace(/\//g, '-');
 };
 
+// Função para compressão de imagem em Base64
+const compressImage = async (base64Str: string, maxWidth = 800, maxQuality = 0.7): Promise<string> => {
+  if (!base64Str || !base64Str.startsWith('data:image')) return base64Str;
+
+  return new Promise((resolve) => {
+    const img = new Image();
+    img.crossOrigin = "anonymous";
+    img.src = base64Str;
+    img.onload = () => {
+      const canvas = document.createElement('canvas');
+      let width = img.width;
+      let height = img.height;
+
+      if (width > maxWidth) {
+        height = (maxWidth / width) * height;
+        width = maxWidth;
+      }
+
+      canvas.width = width;
+      canvas.height = height;
+      const ctx = canvas.getContext('2d');
+      if (!ctx) {
+        resolve(base64Str);
+        return;
+      }
+      ctx.fillStyle = "#FFFFFF";
+      ctx.fillRect(0, 0, width, height);
+      ctx.drawImage(img, 0, 0, width, height);
+      resolve(canvas.toDataURL('image/jpeg', maxQuality));
+    };
+    img.onerror = () => resolve(base64Str);
+  });
+};
+
 // Helper para construir o nome do arquivo padronizado
 const constructFilename = async (
   orderNumber: string,
@@ -531,8 +565,8 @@ export const generateServiceOrderPDF = async (
     // Os dados do cliente agora vêm corretamente do App.tsx
     console.log('Dados do cliente recebidos para o PDF:', serviceData.client);
 
-    // Buscar agendamentos do localStorage
-    const schedulesData = localStorage.getItem('schedules');
+    // Buscar agendamentos do localStorage usando a chave correta
+    const schedulesData = localStorage.getItem('safeprag_schedules') || localStorage.getItem('schedules');
     let schedules = [];
     if (schedulesData) {
       try {
@@ -542,8 +576,8 @@ export const generateServiceOrderPDF = async (
       }
     }
 
-    // Buscar dados completos do cliente do localStorage
-    const clientsData = localStorage.getItem('clients');
+    // Buscar dados completos do cliente do localStorage usando a chave correta
+    const clientsData = localStorage.getItem('safeprag_clients') || localStorage.getItem('clients');
     let clients = [];
     if (clientsData) {
       try {
@@ -554,10 +588,14 @@ export const generateServiceOrderPDF = async (
     }
 
     // Encontrar o cliente específico
-    const fullClientData = clients.find(client => client.code === serviceData.clientCode);
+    const fullClientData = clients.find(client =>
+      client.id === serviceData.clientCode ||
+      client.code === serviceData.clientCode ||
+      (serviceData.client && client.id === serviceData.client.id)
+    );
 
     // Buscar ordens de serviço ativas do localStorage
-    const activeOrdersData = localStorage.getItem('activeServiceOrders');
+    const activeOrdersData = localStorage.getItem('safeprag_service_orders') || localStorage.getItem('activeServiceOrders');
     let activeOrders = [];
     if (activeOrdersData) {
       try {
@@ -690,8 +728,16 @@ export const generateServiceOrderPDF = async (
       table {
         margin: 0;
         padding: 0;
+        border-collapse: collapse;
+        width: 100%;
         /* permitir que a tabela quebre entre páginas por padrão */
         page-break-inside: auto;
+      }
+      .bordered-table {
+        border: 0.5px solid #999;
+      }
+      .bordered-table th, .bordered-table td {
+        border: 0.5px solid #999;
       }
       /* Wrapper de cada bloco de tabela da contagem de pragas: nunca quebrar dentro */
       .table-wrapper {
@@ -722,7 +768,7 @@ export const generateServiceOrderPDF = async (
       .thead-duplicate-row th {
         background-color: #1a73e8;
         color: #fff;
-        border: 1px solid #ddd;
+        border: 0.5px solid #999;
         padding: 3px;
         text-align: center;
         vertical-align: middle;
@@ -734,7 +780,7 @@ export const generateServiceOrderPDF = async (
         padding: 4px 3px;
       }
       .pest-count-table td {
-        border: 1px solid #ddd;
+        border: 0.5px solid #999;
         text-align: center;
         vertical-align: middle;
         line-height: 1.2;
@@ -747,44 +793,52 @@ export const generateServiceOrderPDF = async (
     `;
     document.head.appendChild(style);
 
-    // Função auxiliar para converter URL de imagem em Base64
+    // Função auxiliar para converter URL de imagem em Base64 com compressão para o PDF
     const imageUrlToBase64 = async (url: string): Promise<string> => {
-      if (url.startsWith('data:')) {
-        console.log('✅ URL já é base64/data URI');
-        return url;
+      if (!url) return '';
+      // Se já for data URI (base64) e for imagem, tenta comprimir
+      if (typeof url === 'string' && url.startsWith('data:image')) {
+        return await compressImage(url, 500, 0.6);
       }
+      if (typeof url === 'string' && url.startsWith('data:')) return url;
 
       try {
         const response = await fetch(url);
         const blob = await response.blob();
-        return new Promise((resolve, reject) => {
+        const base64 = await new Promise<string>((resolve, reject) => {
           const reader = new FileReader();
           reader.onloadend = () => resolve(reader.result as string);
           reader.onerror = reject;
           reader.readAsDataURL(blob);
         });
+        // Comprime o resultado do fetch
+        return await compressImage(base64, 500, 0.6);
       } catch (error) {
         console.error('Erro ao converter imagem para base64:', error);
 
-        // Fallback: Tentar via proxy local (para contornar CORS em desenvolvimento)
+        // Fallback: Tentar via Canvas se for uma URL de imagem simples
         try {
-          console.log('🔄 Tentando via proxy local...');
-          const proxyUrl = `http://localhost:4242/proxy-image?url=${encodeURIComponent(url)}`;
-          const response = await fetch(proxyUrl);
-          if (!response.ok) throw new Error('Proxy falhou');
-
-          const blob = await response.blob();
-          return new Promise((resolve, reject) => {
-            const reader = new FileReader();
-            reader.onloadend = () => {
-              console.log('✅ Imagem convertida via PROXY com sucesso');
-              resolve(reader.result as string);
+          return new Promise((resolve) => {
+            const img = new Image();
+            img.setAttribute('crossOrigin', 'anonymous');
+            img.onload = () => {
+              const canvas = document.createElement('canvas');
+              canvas.width = img.width;
+              canvas.height = img.height;
+              const ctx = canvas.getContext('2d');
+              if (ctx) {
+                ctx.fillStyle = "#FFFFFF";
+                ctx.fillRect(0, 0, canvas.width, canvas.height);
+                ctx.drawImage(img, 0, 0);
+                resolve(canvas.toDataURL('image/jpeg', 0.6));
+              } else {
+                resolve('');
+              }
             };
-            reader.onerror = reject;
-            reader.readAsDataURL(blob);
+            img.onerror = () => resolve('');
+            img.src = url;
           });
-        } catch (proxyError) {
-          console.error('❌ Erro também no proxy:', proxyError);
+        } catch (e) {
           return '';
         }
       }
@@ -909,8 +963,8 @@ export const generateServiceOrderPDF = async (
     clientSection.style.margin = '0';
     clientSection.style.padding = '0';
 
-    // Buscar dados completos do cliente do localStorage se disponível
-    const selectedClientDataStr = localStorage.getItem('selected_client');
+    // Buscar dados completos do cliente do localStorage se disponível (checar múltiplas chaves)
+    const selectedClientDataStr = localStorage.getItem('selectedClient') || localStorage.getItem('selected_client');
     let selectedClientData = null;
     if (selectedClientDataStr) {
       try {
@@ -925,20 +979,20 @@ export const generateServiceOrderPDF = async (
 
     clientSection.innerHTML = `
       <div style="background-color: #1a73e8; color: white; padding: 3px 10px; margin: 10px 0; font-size: 13px; text-align: left;"><span style="transform: translateY(-6px); display: inline-block;">Dados Do Cliente</span></div>
-      <table style="width: 100%; border-collapse: collapse; margin-top: 5px; font-size: 12px;">
+      <table class="bordered-table" style="width: 100%; margin-top: 5px; font-size: 12px;">
         <tr>
-          <td style="width: 50%; line-height: 1.3;">
-            <div>Código Do Cliente: ${finalClientData?.code || finalClientData?.id || ''}</div>
-            <div>Razão Social: ${finalClientData?.razaoSocial || finalClientData?.branch || finalClientData?.name || ''}</div>
-            <div>Nome: ${finalClientData?.nomeFantasia || finalClientData?.fantasyName || ''}</div>
-            <div>CNPJ/CPF: ${finalClientData?.cnpj || finalClientData?.document || ''}</div>
-            <div>Cidade: ${finalClientData?.cidade || finalClientData?.city || ''}</div>
+          <td style="width: 50%; line-height: 1.4; padding: 8px;">
+            <div><strong>Código:</strong> ${finalClientData?.code || finalClientData?.id || 'N/A'}</div>
+            <div><strong>Razão Social:</strong> ${finalClientData?.razaoSocial || finalClientData?.branch || finalClientData?.name || 'N/A'}</div>
+            <div><strong>Nome:</strong> ${finalClientData?.nomeFantasia || finalClientData?.fantasyName || finalClientData?.name || 'N/A'}</div>
+            <div><strong>CNPJ/CPF:</strong> ${finalClientData?.cnpj || finalClientData?.document || 'N/A'}</div>
+            <div><strong>Cidade/Estado:</strong> ${finalClientData?.cidade || finalClientData?.city || 'N/A'}</div>
           </td>
-          <td style="width: 50%; line-height: 1.3;">
-            <div>Endereço: ${finalClientData?.endereco || finalClientData?.address || ''}</div>
-            <div>Telefone: ${finalClientData?.telefone || finalClientData?.phone || ''}</div>
-            <div>Contato: ${finalClientData?.contato || finalClientData?.contact || ''}</div>
-            <div>Email: ${finalClientData?.email || ''}</div>
+          <td style="width: 50%; line-height: 1.4; padding: 8px;">
+            <div><strong>Endereço:</strong> ${finalClientData?.endereco || finalClientData?.address || 'N/A'}</div>
+            <div><strong>Telefone:</strong> ${finalClientData?.telefone || finalClientData?.phone || 'N/A'}</div>
+            <div><strong>Contato:</strong> ${finalClientData?.contato || finalClientData?.contact || 'N/A'}</div>
+            <div><strong>Email:</strong> ${finalClientData?.email || 'N/A'}</div>
           </td>
         </tr>
       </table>
@@ -962,12 +1016,12 @@ export const generateServiceOrderPDF = async (
 
     // Título da seção
     serviceTable.innerHTML = `
-      <table style="width: 100%; border-collapse: collapse; margin-bottom: 20px; font-size: 10px;">
+      <table class="bordered-table" style="width: 100%; border-collapse: collapse; margin-bottom: 20px; font-size: 10px;">
         <thead>
           <tr style="background-color: #1a73e8; color: white;">
-            <th style="padding: 3px; text-align: center; border: 1px solid #ddd; vertical-align: middle;"><span style="transform: translateY(-6px); display: inline-block;">Serviço</span></th>
-            <th style="padding: 3px; text-align: center; border: 1px solid #ddd; vertical-align: middle;"><span style="transform: translateY(-6px); display: inline-block;">Praga Alvo</span></th>
-            <th style="padding: 3px; text-align: center; border: 1px solid #ddd; vertical-align: middle;"><span style="transform: translateY(-6px); display: inline-block;">Local</span></th>
+            <th style="padding: 3px; text-align: center; border: 0.5px solid #999; vertical-align: middle;"><span style="transform: translateY(-6px); display: inline-block;">Serviço</span></th>
+            <th style="padding: 3px; text-align: center; border: 0.5px solid #999; vertical-align: middle;"><span style="transform: translateY(-6px); display: inline-block;">Praga Alvo</span></th>
+            <th style="padding: 3px; text-align: center; border: 0.5px solid #999; vertical-align: middle;"><span style="transform: translateY(-6px); display: inline-block;">Local</span></th>
           </tr>
         </thead>
         <tbody>
@@ -976,9 +1030,9 @@ export const generateServiceOrderPDF = async (
         const formattedType = (service.type || '').replace(/_/g, ' ').replace(/\s+/g, ' ').trim();
         return `
                 <tr>
-                  <td style="padding: 8px 3px; border: 1px solid #ddd; text-align: center; vertical-align: middle;">${formattedType.charAt(0).toUpperCase() + formattedType.slice(1)}</td>
-                  <td style="padding: 8px 3px; border: 1px solid #ddd; text-align: center; vertical-align: middle;">${service.target.charAt(0).toUpperCase() + service.target.slice(1)}</td>
-                  <td style="padding: 8px 3px; border: 1px solid #ddd; text-align: center; vertical-align: middle;">${service.location}</td>
+                  <td style="padding: 8px 3px; border: 0.5px solid #999; text-align: center; vertical-align: middle;">${formattedType.charAt(0).toUpperCase() + formattedType.slice(1)}</td>
+                  <td style="padding: 8px 3px; border: 0.5px solid #999; text-align: center; vertical-align: middle;">${service.target.charAt(0).toUpperCase() + service.target.slice(1)}</td>
+                  <td style="padding: 8px 3px; border: 0.5px solid #999; text-align: center; vertical-align: middle;">${service.location}</td>
                 </tr>
               `;
       }
@@ -996,17 +1050,17 @@ export const generateServiceOrderPDF = async (
       const productsTable = document.createElement('div');
       productsTable.innerHTML = `
         <div style="background-color: #1a73e8; color: white; padding: 3px 10px; margin: 10px 0; font-size: 13px; text-align: left;"><span style="transform: translateY(-6px); display: inline-block;">Produtos Utilizados</span></div>
-        <table style="width: 100%; border-collapse: collapse; font-size: 10px;">
+        <table class="bordered-table" style="width: 100%; border-collapse: collapse; font-size: 10px; margin-bottom: 20px;">
           <thead>
             <tr style="background-color: #1a73e8; color: white;">
-              <th style="padding: 3px; text-align: center; border: 1px solid #ddd; vertical-align: middle;"><span style="transform: translateY(-6px); display: inline-block;">Produto</span></th>
-              <th style="padding: 3px; text-align: center; border: 1px solid #ddd; vertical-align: middle;"><span style="transform: translateY(-6px); display: inline-block;">Princípio Ativo</span></th>
-              <th style="padding: 3px; text-align: center; border: 1px solid #ddd; vertical-align: middle;"><span style="transform: translateY(-6px); display: inline-block;">Grupo Químico</span></th>
-              <th style="padding: 3px; text-align: center; border: 1px solid #ddd; vertical-align: middle;"><span style="transform: translateY(-6px); display: inline-block;">Registro</span></th>
-              <th style="padding: 3px; text-align: center; border: 1px solid #ddd; vertical-align: middle;"><span style="transform: translateY(-6px); display: inline-block;">Lote</span></th>
-              <th style="padding: 3px; text-align: center; border: 1px solid #ddd; vertical-align: middle;"><span style="transform: translateY(-6px); display: inline-block;">Validade</span></th>
-              <th style="padding: 3px; text-align: center; border: 1px solid #ddd; vertical-align: middle;"><span style="transform: translateY(-6px); display: inline-block;">Quantidade</span></th>
-              <th style="padding: 3px; text-align: center; border: 1px solid #ddd; vertical-align: middle;"><span style="transform: translateY(-6px); display: inline-block;">Diluente</span></th>
+              <th style="padding: 3px; text-align: center; border: 0.5px solid #999; vertical-align: middle;"><span style="transform: translateY(-6px); display: inline-block;">Produto</span></th>
+              <th style="padding: 3px; text-align: center; border: 0.5px solid #999; vertical-align: middle;"><span style="transform: translateY(-6px); display: inline-block;">Princípio Ativo</span></th>
+              <th style="padding: 3px; text-align: center; border: 0.5px solid #999; vertical-align: middle;"><span style="transform: translateY(-6px); display: inline-block;">Grupo Químico</span></th>
+              <th style="padding: 3px; text-align: center; border: 0.5px solid #999; vertical-align: middle;"><span style="transform: translateY(-6px); display: inline-block;">Registro</span></th>
+              <th style="padding: 3px; text-align: center; border: 0.5px solid #999; vertical-align: middle;"><span style="transform: translateY(-6px); display: inline-block;">Lote</span></th>
+              <th style="padding: 3px; text-align: center; border: 0.5px solid #999; vertical-align: middle;"><span style="transform: translateY(-6px); display: inline-block;">Validade</span></th>
+              <th style="padding: 3px; text-align: center; border: 0.5px solid #999; vertical-align: middle;"><span style="transform: translateY(-6px); display: inline-block;">Quantidade</span></th>
+              <th style="padding: 3px; text-align: center; border: 0.5px solid #999; vertical-align: middle;"><span style="transform: translateY(-6px); display: inline-block;">Diluente</span></th>
             </tr>
           </thead>
           <tbody>
@@ -1018,14 +1072,14 @@ export const generateServiceOrderPDF = async (
         // Se houver produto, renderiza a linha da tabela
         return `
                 <tr>
-                  <td style="padding: 8px 3px; border: 1px solid #ddd; text-align: center; vertical-align: middle;">${service.product.name || ''}</td>
-                  <td style="padding: 8px 3px; border: 1px solid #ddd; text-align: center; vertical-align: middle;">${service.product.activeIngredient || ''}</td>
-                  <td style="padding: 8px 3px; border: 1px solid #ddd; text-align: center; vertical-align: middle;">${service.product.chemicalGroup || ''}</td>
-                  <td style="padding: 8px 3px; border: 1px solid #ddd; text-align: center; vertical-align: middle;">${service.product.registration || ''}</td>
-                  <td style="padding: 8px 3px; border: 1px solid #ddd; text-align: center; vertical-align: middle;">${service.product.batch || ''}</td>
-                  <td style="padding: 8px 3px; border: 1px solid #ddd; text-align: center; vertical-align: middle;">${formatDate(service.product.validity) || ''}</td>
-                  <td style="padding: 8px 3px; border: 1px solid #ddd; text-align: center; vertical-align: middle;">${service.product.quantity || ''}</td>
-                  <td style="padding: 8px 3px; border: 1px solid #ddd; text-align: center; vertical-align: middle;">${service.product.dilution || ''}</td>
+                  <td style="padding: 8px 3px; border: 0.5px solid #999; text-align: center; vertical-align: middle;">${service.product.name || ''}</td>
+                  <td style="padding: 8px 3px; border: 0.5px solid #999; text-align: center; vertical-align: middle;">${service.product.activeIngredient || ''}</td>
+                  <td style="padding: 8px 3px; border: 0.5px solid #999; text-align: center; vertical-align: middle;">${service.product.chemicalGroup || ''}</td>
+                  <td style="padding: 8px 3px; border: 0.5px solid #999; text-align: center; vertical-align: middle;">${service.product.registration || ''}</td>
+                  <td style="padding: 8px 3px; border: 0.5px solid #999; text-align: center; vertical-align: middle;">${service.product.batch || ''}</td>
+                  <td style="padding: 8px 3px; border: 0.5px solid #999; text-align: center; vertical-align: middle;">${formatDate(service.product.validity) || ''}</td>
+                  <td style="padding: 8px 3px; border: 0.5px solid #999; text-align: center; vertical-align: middle;">${service.product.quantity || ''}</td>
+                  <td style="padding: 8px 3px; border: 0.5px solid #999; text-align: center; vertical-align: middle;">${service.product.dilution || ''}</td>
                 </tr>
               `;
       }).join('')}
@@ -1041,26 +1095,26 @@ export const generateServiceOrderPDF = async (
         <table style="width: 100%; border-collapse: collapse; font-size: 10px;">
           <thead>
             <tr style="background-color: #1a73e8; color: white;">
-              <th style="padding: 3px; text-align: center; border: 1px solid #ddd; vertical-align: middle;"><span style="transform: translateY(-6px); display: inline-block;">Produto</span></th>
-              <th style="padding: 3px; text-align: center; border: 1px solid #ddd; vertical-align: middle;"><span style="transform: translateY(-6px); display: inline-block;">Princípio Ativo</span></th>
-              <th style="padding: 3px; text-align: center; border: 1px solid #ddd; vertical-align: middle;"><span style="transform: translateY(-6px); display: inline-block;">Grupo Químico</span></th>
-              <th style="padding: 3px; text-align: center; border: 1px solid #ddd; vertical-align: middle;"><span style="transform: translateY(-6px); display: inline-block;">Registro</span></th>
-              <th style="padding: 3px; text-align: center; border: 1px solid #ddd; vertical-align: middle;"><span style="transform: translateY(-6px); display: inline-block;">Lote</span></th>
-              <th style="padding: 3px; text-align: center; border: 1px solid #ddd; vertical-align: middle;"><span style="transform: translateY(-6px); display: inline-block;">Validade</span></th>
-              <th style="padding: 3px; text-align: center; border: 1px solid #ddd; vertical-align: middle;"><span style="transform: translateY(-6px); display: inline-block;">Quantidade</span></th>
-              <th style="padding: 3px; text-align: center; border: 1px solid #ddd; vertical-align: middle;"><span style="transform: translateY(-6px); display: inline-block;">Diluente</span></th>
-            </tr>
-          </thead>
-          <tbody>
-            <tr>
-              <td style="padding: 8px 3px; border: 1px solid #ddd; text-align: center; vertical-align: middle;">${serviceData.product.name || ''}</td>
-              <td style="padding: 8px 3px; border: 1px solid #ddd; text-align: center; vertical-align: middle;">${serviceData.product.activeIngredient || ''}</td>
-              <td style="padding: 8px 3px; border: 1px solid #ddd; text-align: center; vertical-align: middle;">${serviceData.product.chemicalGroup || ''}</td>
-              <td style="padding: 8px 3px; border: 1px solid #ddd; text-align: center; vertical-align: middle;">${serviceData.product.registration || ''}</td>
-              <td style="padding: 8px 3px; border: 1px solid #ddd; text-align: center; vertical-align: middle;">${serviceData.product.batch || ''}</td>
-              <td style="padding: 8px 3px; border: 1px solid #ddd; text-align: center; vertical-align: middle;">${formatDate(serviceData.product.validity) || ''}</td>
-              <td style="padding: 8px 3px; border: 1px solid #ddd; text-align: center; vertical-align: middle;">${serviceData.product.quantity || ''}</td>
-              <td style="padding: 8px 3px; border: 1px solid #ddd; text-align: center; vertical-align: middle;">${serviceData.product.dilution || ''}</td>
+                <th style="padding: 3px; text-align: center; border: 0.5px solid #ddd; vertical-align: middle;"><span style="transform: translateY(-6px); display: inline-block;">Produto</span></th>
+                <th style="padding: 3px; text-align: center; border: 0.5px solid #ddd; vertical-align: middle;"><span style="transform: translateY(-6px); display: inline-block;">Princípio Ativo</span></th>
+                <th style="padding: 3px; text-align: center; border: 0.5px solid #ddd; vertical-align: middle;"><span style="transform: translateY(-6px); display: inline-block;">Grupo Químico</span></th>
+                <th style="padding: 3px; text-align: center; border: 0.5px solid #ddd; vertical-align: middle;"><span style="transform: translateY(-6px); display: inline-block;">Registro</span></th>
+                <th style="padding: 3px; text-align: center; border: 0.5px solid #ddd; vertical-align: middle;"><span style="transform: translateY(-6px); display: inline-block;">Lote</span></th>
+                <th style="padding: 3px; text-align: center; border: 0.5px solid #ddd; vertical-align: middle;"><span style="transform: translateY(-6px); display: inline-block;">Validade</span></th>
+                <th style="padding: 3px; text-align: center; border: 0.5px solid #ddd; vertical-align: middle;"><span style="transform: translateY(-6px); display: inline-block;">Quantidade</span></th>
+                <th style="padding: 3px; text-align: center; border: 0.5px solid #ddd; vertical-align: middle;"><span style="transform: translateY(-6px); display: inline-block;">Diluente</span></th>
+              </tr>
+            </thead>
+            <tbody>
+              <tr>
+                <td style="padding: 8px 3px; border: 0.5px solid #ddd; text-align: center; vertical-align: middle;">${serviceData.product.name || ''}</td>
+                <td style="padding: 8px 3px; border: 0.5px solid #ddd; text-align: center; vertical-align: middle;">${serviceData.product.activeIngredient || ''}</td>
+                <td style="padding: 8px 3px; border: 0.5px solid #ddd; text-align: center; vertical-align: middle;">${serviceData.product.chemicalGroup || ''}</td>
+                <td style="padding: 8px 3px; border: 0.5px solid #ddd; text-align: center; vertical-align: middle;">${serviceData.product.registration || ''}</td>
+                <td style="padding: 8px 3px; border: 0.5px solid #ddd; text-align: center; vertical-align: middle;">${serviceData.product.batch || ''}</td>
+                <td style="padding: 8px 3px; border: 0.5px solid #ddd; text-align: center; vertical-align: middle;">${formatDate(serviceData.product.validity) || ''}</td>
+                <td style="padding: 8px 3px; border: 0.5px solid #ddd; text-align: center; vertical-align: middle;">${serviceData.product.quantity || ''}</td>
+                <td style="padding: 8px 3px; border: 0.5px solid #ddd; text-align: center; vertical-align: middle;">${serviceData.product.dilution || ''}</td>
             </tr>
           </tbody>
         </table>
@@ -1089,18 +1143,18 @@ export const generateServiceOrderPDF = async (
 
       const devicesHTML = `
         ${Object.entries(groupedDevices).map(([type, items], idx) => `
-           <table class="devices-table" style="width: 100%; border-collapse: collapse; font-size: 10px; margin-bottom: 6px; page-break-inside: avoid; break-inside: avoid;">
+       <table class="devices-table bordered-table" style="width: 100%; border-collapse: collapse; font-size: 10px; margin-bottom: 6px; page-break-inside: avoid; break-inside: avoid;">
             <thead style="display: table-header-group; page-break-after: avoid; break-after: avoid; page-break-inside: avoid;">
               <tr style="background-color: #1a73e8; color: white;">
-                <th colspan="4" style="padding: 3px 8px; text-align: left; border: 1px solid #ddd; vertical-align: middle; line-height: 1.3;">
+                <th colspan="4" style="padding: 3px 8px; text-align: left; border: 0.5px solid #999; vertical-align: middle; line-height: 1.3;">
                   <span style="transform: translateY(-6px); display: inline-block;">Dispositivos Monitorados</span>
                 </th>
               </tr>
               <tr style="background-color: #1a73e8; color: white;">
-                <th style="padding: 3px; text-align: center; border: 1px solid #ddd; vertical-align: middle; line-height: 1.3;"><span style="transform: translateY(-6px); display: inline-block;">Dispositivos</span></th>
-                <th style="padding: 3px; text-align: center; border: 1px solid #ddd; width: 10%; vertical-align: middle; line-height: 1.3;"><span style="transform: translateY(-6px); display: inline-block;">Quantidade</span></th>
-                <th style="padding: 3px; text-align: center; border: 1px solid #ddd; vertical-align: middle; line-height: 1.3;"><span style="transform: translateY(-6px); display: inline-block;">Status</span></th>
-                <th style="padding: 3px; text-align: center; border: 1px solid #ddd; vertical-align: middle; line-height: 1.3;"><span style="transform: translateY(-6px); display: inline-block;">Lista De Dispositivos</span></th>
+                <th style="padding: 3px; text-align: center; border: 0.5px solid #999; vertical-align: middle; line-height: 1.3;"><span style="transform: translateY(-6px); display: inline-block;">Dispositivos</span></th>
+                <th style="padding: 3px; text-align: center; border: 0.5px solid #999; width: 10%; vertical-align: middle; line-height: 1.3;"><span style="transform: translateY(-6px); display: inline-block;">Quantidade</span></th>
+                <th style="padding: 3px; text-align: center; border: 0.5px solid #999; vertical-align: middle; line-height: 1.3;"><span style="transform: translateY(-6px); display: inline-block;">Status</span></th>
+                <th style="padding: 3px; text-align: center; border: 0.5px solid #999; vertical-align: middle; line-height: 1.3;"><span style="transform: translateY(-6px); display: inline-block;">Lista De Dispositivos</span></th>
               </tr>
             </thead>
             <tbody style="page-break-before: avoid; break-before: avoid;">
@@ -1131,22 +1185,22 @@ export const generateServiceOrderPDF = async (
 
         return `
                   <tr style="page-break-inside: avoid; break-inside: avoid; ${'${rowIdx === 0 ? \'page-break-before: avoid; break-before: avoid;\' : \'\'}'}">
-                    <td style="padding: 8px 3px; border: 1px solid #ddd; text-align: center; vertical-align: middle;">${type}</td>
-                    <td style="padding: 8px 3px; border: 1px solid #ddd; text-align: center; vertical-align: middle;">${device.quantity}</td>
-                    <td style="padding: 8px 3px; border: 1px solid #ddd; text-align: center; vertical-align: middle;">
+                    <td style="padding: 8px 3px; border: 0.5px solid #999; text-align: center; vertical-align: middle;">${type}</td>
+                    <td style="padding: 8px 3px; border: 0.5px solid #999; text-align: center; vertical-align: middle;">${device.quantity}</td>
+                    <td style="padding: 8px 3px; border: 0.5px solid #999; text-align: center; vertical-align: middle;">
                       ${device.status
             .sort((a, b) => a.name.localeCompare(b.name))
             .map((statusItem, index, array) => {
               const percentage = ((statusItem.count / device.quantity) * 100).toFixed(1);
               return `
                             <div style="font-size: 10px;">
-                              ${statusItem.name} (${statusItem.count} - ${percentage}%)
+                               ${statusItem.name} (${statusItem.count} - ${percentage}%)
                               ${index < array.length - 1 ? '<br><br>' : ''}
                             </div>
                           `;
             }).join('')}
                     </td>
-                    <td style="padding: 8px 3px; border: 1px solid #ddd; text-align: left; vertical-align: top; column-count: 2; column-gap: 12px; white-space: normal; word-break: break-word;">
+                    <td style="padding: 8px 3px; border: 0.5px solid #999; text-align: left; vertical-align: top; column-count: 2; column-gap: 12px; white-space: normal; word-break: break-word;">
                       ${device.status
             .sort((a, b) => a.name.localeCompare(b.name))
             .map((statusItem, index, array) => {
@@ -1191,7 +1245,7 @@ export const generateServiceOrderPDF = async (
     if (hasObservations) {
       observationsContainer.innerHTML = `
         <div style="background-color: #1a73e8; color: white; padding: 3px 10px; margin: 6px 0; font-size: 13px; text-align: left;"><span style="transform: translateY(-6px); display: inline-block;">Observações</span></div>
-        <div style="border: 1px solid #ddd; padding: 1px 8px 12px 8px; margin-bottom: 6px; white-space: pre-line; word-break: break-word; line-height: 1.15; font-size: 11px; text-align: justify; hyphens: auto;">${obsText}</div>
+        <div style="border: 0.5px solid #ddd; padding: 1px 8px 12px 8px; margin-bottom: 6px; white-space: pre-line; word-break: break-word; line-height: 1.15; font-size: 11px; text-align: justify; hyphens: auto;">${obsText}</div>
       `;
       complementarySection.appendChild(observationsContainer);
     }
@@ -1230,10 +1284,15 @@ export const generateServiceOrderPDF = async (
       .filter((sig: any) => sig.signature_type === 'tecnico')
       .sort((a: any, b: any) => new Date(b.updated_at || 0).getTime() - new Date(a.updated_at || 0).getTime())[0] || null;
 
+    // Comprimir assinaturas antes de incluir no PDF
+    const controladorSig = await compressImage(controladorData?.controlador_signature || userData?.signature || '', 400, 0.6);
+    const tecnicoSig = await compressImage(tecnicoData?.responsavel_tecnico_signature || userData?.tecnicoSignature || '', 400, 0.6);
+    const clientSig = await compressImage(clientData?.signature || '', 400, 0.6);
+
     signaturesSection.innerHTML = `
       <div style="flex: 1; max-width: 180px;">
         <div style="${signatureStyle}">
-          ${controladorData?.controlador_signature || userData?.signature ? `<img src="${controladorData?.controlador_signature || userData?.signature}" alt="Assinatura" style="width: 180px; height: 60px; margin-bottom: 5px; display: block;">` : `<div style="width: 180px; height: 60px; margin-bottom: 5px; display: block;"></div>`}
+          ${controladorSig ? `<img src="${controladorSig}" alt="Assinatura" style="width: 180px; height: 60px; margin-bottom: 5px; display: block;">` : `<div style="width: 180px; height: 60px; margin-bottom: 5px; display: block;"></div>`}
           <div style="font-weight: bold; margin-top: 5px;">Controlador De Pragas</div>
           <div style="font-size: 11px; margin-top: 2px;">${controladorData?.controlador_name || userData?.name || ''}</div>
           ${controladorData?.controlador_phone || userData?.phone ? `<div style="font-size: 11px; margin-top: 2px;">${controladorData?.controlador_phone || userData?.phone}</div>` : ''}
@@ -1241,7 +1300,7 @@ export const generateServiceOrderPDF = async (
       </div>
       <div style="flex: 1; max-width: 180px;">
         <div style="${signatureStyle}">
-          ${tecnicoData?.responsavel_tecnico_signature || userData?.tecnicoSignature ? `<img src="${tecnicoData?.responsavel_tecnico_signature || userData?.tecnicoSignature}" alt="Assinatura" style="width: 180px; height: 60px; margin-bottom: 5px; display: block;">` : `<div style="width: 180px; height: 60px; margin-bottom: 5px; display: block;"></div>`}
+          ${tecnicoSig ? `<img src="${tecnicoSig}" alt="Assinatura" style="width: 180px; height: 60px; margin-bottom: 5px; display: block;">` : `<div style="width: 180px; height: 60px; margin-bottom: 5px; display: block;"></div>`}
           <div style="font-weight: bold; margin-top: 5px;">Responsável Técnico</div>
           <div style="font-size: 11px; margin-top: 2px;">${tecnicoData?.responsavel_tecnico_name || userData?.tecnicoName || ''}</div>
           <div style="font-size: 11px; margin-top: 2px;">${tecnicoData?.responsavel_tecnico_crea || userData?.tecnicoCrea ? `CREA ${tecnicoData?.responsavel_tecnico_crea || userData?.tecnicoCrea}` : ''}</div>
@@ -1249,7 +1308,7 @@ export const generateServiceOrderPDF = async (
       </div>
       <div style="flex: 1; max-width: 180px;">
         <div style="${signatureStyle}">
-          ${clientData?.signature ? `<img src="${clientData.signature}" alt="Assinatura" style="width: 180px; height: 60px; margin-bottom: 5px; display: block;">` : `<div style="width: 180px; height: 60px; margin-bottom: 5px; display: block;"></div>`}
+          ${clientSig ? `<img src="${clientSig}" alt="Assinatura" style="width: 180px; height: 60px; margin-bottom: 5px; display: block;">` : `<div style="width: 180px; height: 60px; margin-bottom: 5px; display: block;"></div>`}
           <div style="font-weight: bold; margin-top: 5px;">Contato Do Cliente</div>
           ${clientData?.contato ? `<div style="font-size: 11px; margin-top: 2px;">${clientData.contato}</div>` : ''}
           ${clientData?.phone ? `<div style="font-size: 11px; margin-top: 2px;">${clientData.phone.replace(/^\+55/, '')}</div>` : ''}
@@ -1428,14 +1487,14 @@ export const generateServiceOrderPDF = async (
           .table-wrapper { page-break-inside: avoid; break-inside: avoid; margin-bottom: 1px; }
           .pest-count-table tr, .pest-count-table td { page-break-inside: avoid; break-inside: avoid; }
           .pest-count-table thead { background-color: #1a73e8; color: white; }
-          .pest-count-table { width: 100%; border-collapse: collapse; font-size: 10px; margin-bottom: 1px; table-layout: fixed; }
+          .pest-count-table { width: 100%; border-collapse: collapse; font-size: 10px; margin-bottom: 1px; table-layout: fixed; border: 0.5px solid #999; }
           /* Cabeçalho mantém altura moderada para legibilidade */
-          .pest-count-table th { padding: 3px; text-align: center; border: 1px solid #ddd; vertical-align: middle; line-height: 1.2; box-sizing: border-box; }
+          .pest-count-table th { padding: 3px; text-align: center; border: 0.5px solid #999; vertical-align: middle; line-height: 1.2; box-sizing: border-box; }
           /* Linhas do corpo com altura reduzida ~50% */
-          .pest-count-table td { padding: 4px 3px; text-align: center; border: 1px solid #ddd; vertical-align: middle; line-height: 1.0; box-sizing: border-box; word-break: break-word; }
+          .pest-count-table td { padding: 4px 3px; text-align: center; border: 0.5px solid #999; vertical-align: middle; line-height: 1.0; box-sizing: border-box; word-break: break-word; }
           /* Células que usam rowspan (tipo/número) alinham no topo com leve respiro */
-          .pest-count-table td[rowspan] { vertical-align: top; padding-top: 6px; }
-          .pest-count-table thead tr:first-child th[colspan="4"] { width: 100%; }
+          .pest-count-table td[rowspan] { vertical-align: top; padding-top: 6px; border: 0.5px solid #999; }
+          .pest-count-table thead tr:first-child th[colspan="4"] { width: 100%; border: 0.5px solid #999; }
           /* Variante compacta para aproveitar melhor o espaço quando necessário */
           .pest-count-table.compact { font-size: 9.5px; }
           .pest-count-table.compact th, .pest-count-table.compact td { padding: 2px 2px; line-height: 1.05; }
@@ -1471,14 +1530,16 @@ export const generateServiceOrderPDF = async (
             '</colgroup>' +
             '<thead style="display: table-header-group; page-break-after: avoid; break-after: avoid; page-break-inside: avoid;">' +
             '<tr style="background-color: #1a73e8; color: white;">' +
-            '<th colspan="4" style="padding: 3px 8px; text-align: left; border: 1px solid #ddd; vertical-align: middle; line-height: 1.2;"><span style="transform: translateY(-3px); display: inline-block;">Contagem de Pragas por Dispositivo</span></th>' +
+            '<th colspan="4" style="padding: 3px 8px; text-align: left; border: 0.5px solid #999; vertical-align: middle; line-height: 1.2;"><span style="transform: translateY(-3px); display: inline-block;">Contagem de Pragas por Dispositivo</span></th>' +
             '</tr>' +
             '<tr style="background-color: #1a73e8; color: white;">' +
-            '<th style="padding: 4px 3px; text-align: center; border: 1px solid #ddd; vertical-align: middle; line-height: 1.0;"><span style="transform: translateY(-3px); display: inline-block;">Tipo de Dispositivo</span></th>' +
-            '<th style="padding: 4px 3px; text-align: center; border: 1px solid #ddd; vertical-align: middle; line-height: 1.0;"><span style="transform: translateY(-3px); display: inline-block;">Número Dispositivo</span></th>' +
-            '<th style="padding: 4px 3px; text-align: center; border: 1px solid #ddd; vertical-align: middle; line-height: 1.0;"><span style="transform: translateY(-3px); display: inline-block;">Tipo de Praga</span></th>' +
-            '<th style="padding: 4px 3px; text-align: center; border: 1px solid #ddd; vertical-align: middle; line-height: 1.0;"><span style="transform: translateY(-3px); display: inline-block;">Quantidade</span></th>' +
-            '</tr></thead><tbody></tbody>';
+            '<th style="padding: 4px 3px; text-align: center; border: 0.5px solid #999; vertical-align: middle; line-height: 1.0;"><span style="transform: translateY(-3px); display: inline-block;">Tipo de Dispositivo</span></th>' +
+            '<th style="padding: 4px 3px; text-align: center; border: 0.5px solid #999; vertical-align: middle; line-height: 1.0;"><span style="transform: translateY(-3px); display: inline-block;">Número Dispositivo</span></th>' +
+            '<th style="padding: 4px 3px; text-align: center; border: 0.5px solid #999; vertical-align: middle; line-height: 1.0;"><span style="transform: translateY(-3px); display: inline-block;">Tipo de Praga</span></th>' +
+            '<th style="padding: 4px 3px; text-align: center; border: 0.5px solid #999; vertical-align: middle; line-height: 1.0;"><span style="transform: translateY(-3px); display: inline-block;">Quantidade</span></th>' +
+            '</tr>' +
+            '</thead>' +
+            '<tbody></tbody>';
           return tbl;
         };
 
@@ -1565,11 +1626,11 @@ export const generateServiceOrderPDF = async (
               const tr = document.createElement('tr');
               let rowHtml = '';
               if (idx === 0) {
-                rowHtml += `<td rowspan="${rowsCount}" style="padding: 4px 3px; border: 1px solid #ddd; text-align: center; vertical-align: top;"><span style="display:inline-block; transform: translateY(-5px);">${device.deviceType || 'Armadilha luminosa'}</span></td>`;
-                rowHtml += `<td rowspan="${rowsCount}" style="padding: 4px 3px; border: 1px solid #ddd; text-align: center; vertical-align: top;"><span style="display:inline-block; transform: translateY(-5px);">${device.deviceNumber}</span></td>`;
+                rowHtml += `<td rowspan="${rowsCount}" style="padding: 4px 3px; border: 0.5px solid #999; text-align: center; vertical-align: top;"><span style="display:inline-block; transform: translateY(-5px);">${device.deviceType || 'Armadilha luminosa'}</span></td>`;
+                rowHtml += `<td rowspan="${rowsCount}" style="padding: 4px 3px; border: 0.5px solid #999; text-align: center; vertical-align: top;"><span style="display:inline-block; transform: translateY(-5px);">${device.deviceNumber}</span></td>`;
               }
-              rowHtml += `<td style="padding: 4px 3px; border: 1px solid #ddd; text-align: center; vertical-align: middle;"><span style="display:inline-block; transform: translateY(-5px);">${pest.name}</span></td>`;
-              rowHtml += `<td style="padding: 4px 3px; border: 1px solid #ddd; text-align: center; vertical-align: middle;"><span style="display:inline-block; transform: translateY(-5px);">${pest.count}</span></td>`;
+              rowHtml += `<td style="padding: 4px 3px; border: 0.5px solid #999; text-align: center; vertical-align: middle;"><span style="display:inline-block; transform: translateY(-5px);">${pest.name}</span></td>`;
+              rowHtml += `<td style="padding: 4px 3px; border: 0.5px solid #999; text-align: center; vertical-align: middle;"><span style="display:inline-block; transform: translateY(-5px);">${pest.count}</span></td>`;
               tr.innerHTML = rowHtml;
               tbody.appendChild(tr);
             });
@@ -1619,11 +1680,11 @@ export const generateServiceOrderPDF = async (
             const tr = document.createElement('tr');
             let rowHtml = '';
             if (idx === 0) {
-              rowHtml += `<td rowspan="${pestsWithCount.length}"><span style="display:inline-block; transform: translateY(-5px);">${device.deviceType || 'Armadilha luminosa'}</span></td>`;
-              rowHtml += `<td rowspan="${pestsWithCount.length}"><span style="display:inline-block; transform: translateY(-5px);">${device.deviceNumber}</span></td>`;
+              rowHtml += `<td rowspan="${pestsWithCount.length}" style="border: 0.5px solid #999;"><span style="display:inline-block; transform: translateY(-5px);">${device.deviceType || 'Armadilha luminosa'}</span></td>`;
+              rowHtml += `<td rowspan="${pestsWithCount.length}" style="border: 0.5px solid #999;"><span style="display:inline-block; transform: translateY(-5px);">${device.deviceNumber}</span></td>`;
             }
-            rowHtml += `<td><span style="display:inline-block; transform: translateY(-5px);">${pest.name}</span></td>`;
-            rowHtml += `<td><span style="display:inline-block; transform: translateY(-5px);">${pest.count}</span></td>`;
+            rowHtml += `<td style="border: 0.5px solid #999;"><span style="display:inline-block; transform: translateY(-5px);">${pest.name}</span></td>`;
+            rowHtml += `<td style="border: 0.5px solid #999;"><span style="display:inline-block; transform: translateY(-5px);">${pest.count}</span></td>`;
             tr.innerHTML = rowHtml;
             currentTbody.appendChild(tr);
           });
@@ -1808,7 +1869,7 @@ export const generateServiceOrderPDF = async (
     const pdfOptions = {
       margin: [10, 10, 20, 10],
       filename: `${filename}.pdf`,
-      image: { type: 'jpeg', quality: 0.98 },
+      image: { type: 'jpeg', quality: 0.85 },
       html2canvas: {
         scale: 2,
         useCORS: true,
@@ -2173,7 +2234,7 @@ export const generateEditableServiceOrderPDF = async (
     page.drawLine({
       start: { x: 100, y: yPosition - 45 },
       end: { x: 250, y: yPosition - 45 },
-      thickness: 1,
+      thickness: 0.5,
       color: rgb(0, 0, 0)
     });
 
@@ -2189,7 +2250,7 @@ export const generateEditableServiceOrderPDF = async (
     page.drawLine({
       start: { x: 350, y: yPosition - 45 },
       end: { x: 500, y: yPosition - 45 },
-      thickness: 1,
+      thickness: 0.5,
       color: rgb(0, 0, 0)
     });
 
