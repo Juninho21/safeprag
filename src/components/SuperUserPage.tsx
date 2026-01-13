@@ -7,7 +7,7 @@ import {
 } from 'lucide-react';
 import { plansService, Plan, MercadoPagoConfig } from '../services/plansService';
 import { useAuth } from '../contexts/AuthContext';
-import { listUsers, updateUserRole, AdminUser, listCompanies } from '../services/adminApi';
+import { listUsers, updateUserRole, AdminUser, listCompanies, deleteUser } from '../services/adminApi';
 
 export function SuperUserPage() {
     const { user, role: currentUserRole } = useAuth();
@@ -81,6 +81,18 @@ export function SuperUserPage() {
             alert('Permissão atualizada com sucesso!');
         } catch (error: any) {
             alert(`Erro ao atualizar papel: ${error.message}`);
+        }
+    };
+
+    const handleDeleteUser = async (uid: string, email: string) => {
+        if (!confirm(`Tem certeza que deseja EXCLUIR permanentemente o usuário ${email}? Esta ação não pode ser desfeita.`)) return;
+
+        try {
+            await deleteUser(uid);
+            setUsers(prev => prev.filter(u => u.uid !== uid));
+            alert('Usuário excluído com sucesso!');
+        } catch (error: any) {
+            alert(`Erro ao excluir usuário: ${error.message}`);
         }
     };
 
@@ -357,7 +369,10 @@ export function SuperUserPage() {
                                                     </span>
                                                 </td>
                                                 <td className="px-6 py-4 text-right">
-                                                    <button className="p-1.5 text-gray-400 hover:text-red-600 rounded-lg hover:bg-red-50 transition-colors">
+                                                    <button
+                                                        onClick={() => handleDeleteUser(userItem.uid, userItem.email || '')}
+                                                        className="p-1.5 text-gray-400 hover:text-red-600 rounded-lg hover:bg-red-50 transition-colors"
+                                                    >
                                                         <Trash2 className="w-4 h-4" />
                                                     </button>
                                                 </td>
@@ -400,7 +415,10 @@ export function SuperUserPage() {
                                                     <option value="owner">Super Admin</option>
                                                 </select>
                                             </div>
-                                            <button className="h-9 w-9 mt-5 flex items-center justify-center bg-red-50 text-red-500 rounded-lg shrink-0">
+                                            <button
+                                                onClick={() => handleDeleteUser(userItem.uid, userItem.email || '')}
+                                                className="h-9 w-9 mt-5 flex items-center justify-center bg-red-50 text-red-500 rounded-lg shrink-0 active:scale-95 transition-transform"
+                                            >
                                                 <Trash2 className="w-4 h-4" />
                                             </button>
                                         </div>
