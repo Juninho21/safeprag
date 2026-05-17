@@ -1910,6 +1910,15 @@ export const generateServiceOrderPDF = async (
       pdf.setTextColor(128);
       const pageWidth = pdf.internal.pageSize.getWidth();
       const pageHeight = pdf.internal.pageSize.getHeight();
+      
+      // Contatos de emergência no rodapé
+      pdf.text(
+        'CIATOX 0800-644-6774 | BOMBEIRO: 193 | SAMU: 192',
+        pageWidth / 2,
+        pageHeight - 4,
+        { align: 'center' }
+      );
+
       pdf.text(
         `${i}/${totalPages}`,
         pageWidth - 12,
@@ -2259,6 +2268,17 @@ export const generateEditableServiceOrderPDF = async (
       end: { x: 500, y: yPosition - 45 },
       thickness: 0.5,
       color: rgb(0, 0, 0)
+    });
+
+    // Contatos de emergência no rodapé
+    const textEmergency = 'CIATOX 0800-644-6774 | BOMBEIRO: 193 | SAMU: 192';
+    const textWidth = font.widthOfTextAtSize(textEmergency, 8);
+    page.drawText(textEmergency, {
+      x: (width - textWidth) / 2,
+      y: 20,
+      size: 8,
+      font: font,
+      color: rgb(0.5, 0.5, 0.5)
     });
 
     // Gerar o PDF
