@@ -1151,10 +1151,10 @@ export const generateServiceOrderPDF = async (
                 </th>
               </tr>
               <tr style="background-color: #1a73e8; color: white;">
-                <th style="padding: 3px; text-align: center; border: 0.5px solid #999; vertical-align: middle; line-height: 1.3;"><span style="transform: translateY(-6px); display: inline-block;">Dispositivos</span></th>
-                <th style="padding: 3px; text-align: center; border: 0.5px solid #999; width: 10%; vertical-align: middle; line-height: 1.3;"><span style="transform: translateY(-6px); display: inline-block;">Quantidade</span></th>
-                <th style="padding: 3px; text-align: center; border: 0.5px solid #999; vertical-align: middle; line-height: 1.3;"><span style="transform: translateY(-6px); display: inline-block;">Status</span></th>
-                <th style="padding: 3px; text-align: center; border: 0.5px solid #999; vertical-align: middle; line-height: 1.3;"><span style="transform: translateY(-6px); display: inline-block;">Lista De Dispositivos</span></th>
+                <th style="padding: 3px; text-align: center; border: 0.5px solid #999; width: 8%; vertical-align: middle; line-height: 1.3;"><span style="transform: translateY(-6px); display: inline-block;">Dispositivos</span></th>
+                <th style="padding: 3px; text-align: center; border: 0.5px solid #999; width: 4%; vertical-align: middle; line-height: 1.3;"><span style="transform: translateY(-6px); display: inline-block;">Qtd</span></th>
+                <th style="padding: 3px; text-align: center; border: 0.5px solid #999; width: 25%; vertical-align: middle; line-height: 1.3;"><span style="transform: translateY(-6px); display: inline-block;">Status</span></th>
+                <th style="padding: 3px; text-align: center; border: 0.5px solid #999; width: 63%; vertical-align: middle; line-height: 1.3;"><span style="transform: translateY(-6px); display: inline-block;">Lista De Dispositivos</span></th>
               </tr>
             </thead>
             <tbody style="page-break-before: avoid; break-before: avoid;">
@@ -1186,32 +1186,39 @@ export const generateServiceOrderPDF = async (
         return `
                   <tr style="page-break-inside: avoid; break-inside: avoid; ${'${rowIdx === 0 ? \'page-break-before: avoid; break-before: avoid;\' : \'\'}'}">
                     <td style="padding: 8px 3px; border: 0.5px solid #999; text-align: center; vertical-align: middle;">${type}</td>
-                    <td style="padding: 8px 3px; border: 0.5px solid #999; text-align: center; vertical-align: middle;">${device.quantity}</td>
-                    <td style="padding: 8px 3px; border: 0.5px solid #999; text-align: center; vertical-align: middle;">
+                    <td style="padding: 4px 2px; border: 0.5px solid #999; text-align: center; vertical-align: middle; font-size: 10px;">${device.quantity}</td>
+                    <td style="padding: 4px 4px 6px 4px; border: 0.5px solid #999; text-align: left; vertical-align: middle; font-size: 9px; line-height: 1.4;">
                       ${device.status
             .sort((a, b) => a.name.localeCompare(b.name))
-            .map((statusItem, index, array) => {
+            .map((statusItem) => {
               const percentage = ((statusItem.count / device.quantity) * 100).toFixed(1);
-              return `
-                            <div style="font-size: 10px;">
-                               ${statusItem.name} (${statusItem.count} - ${percentage}%)
-                              ${index < array.length - 1 ? '<br><br>' : ''}
-                            </div>
-                          `;
+              return `<div style="white-space: nowrap;">${statusItem.name} (${statusItem.count} - ${percentage}%)</div>`;
             }).join('')}
                     </td>
-                    <td style="padding: 8px 3px; border: 0.5px solid #999; text-align: left; vertical-align: top; column-count: 2; column-gap: 12px; white-space: normal; word-break: break-word;">
-                      ${device.status
-            .sort((a, b) => a.name.localeCompare(b.name))
-            .map((statusItem, index, array) => {
-              const sequence = getSequences(statusItem.devices);
-              return `
-                            ${statusItem.name}:
-                            <br>
-                            ${sequence}
-                            ${index < array.length - 1 ? '<br><br>' : ''}
-                          `;
-            }).join('')}
+                    <td style="padding: 4px 5px; border: 0.5px solid #999; text-align: left; vertical-align: top; white-space: normal; word-break: break-word; font-size: 9px; line-height: 1.3;">
+                      ${(() => {
+              // Separa o status "Conforme" (que geralmente tem mais dispositivos) dos demais
+              const sorted = [...device.status].sort((a, b) => a.name.localeCompare(b.name));
+              const conformeItem = sorted.find(s => s.name.toLowerCase() === 'conforme');
+              const otherItems = sorted.filter(s => s.name.toLowerCase() !== 'conforme');
+              
+              let html = '';
+              // Conforme em linha completa (geralmente tem mais números)
+              if (conformeItem && conformeItem.devices && conformeItem.devices.length > 0) {
+                html += `<div style="margin-bottom: 3px;"><b>${conformeItem.name}:</b> ${getSequences(conformeItem.devices)}</div>`;
+              }
+              // Demais status em layout flex compacto
+              if (otherItems.length > 0) {
+                html += `<div style="display: flex; flex-wrap: wrap; gap: 1px 14px;">`;
+                otherItems.forEach(statusItem => {
+                  if (statusItem.devices && statusItem.devices.length > 0) {
+                    html += `<div style="min-width: 100px; margin-bottom: 2px;"><b>${statusItem.name}:</b> ${getSequences(statusItem.devices)}</div>`;
+                  }
+                });
+                html += `</div>`;
+              }
+              return html;
+            })()}
                     </td>
                   </tr>
                 `;
